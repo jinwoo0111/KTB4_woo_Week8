@@ -9,10 +9,8 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 public class PostUpdateRequest {
-    @NotBlank
     private String title;
 
-    @NotBlank
     private String content;
 
     @JsonProperty("content_image")

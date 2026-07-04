@@ -161,10 +161,16 @@ public class PostService {
         Post post = findById(postId);
 
         if(request.getTitle() != null) {
+            if(request.getTitle().isBlank()) {
+                throw new IllegalArgumentException("title_blank");
+            }
             post.changeTitle(request.getTitle());
         }
 
         if(request.getContent() != null) {
+            if(request.getContent().isBlank()) {
+                throw new IllegalArgumentException("content_blank");
+            }
             post.changeContent(request.getContent());
         }
 
