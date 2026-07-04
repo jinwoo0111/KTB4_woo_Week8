@@ -10,10 +10,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class UserPasswordUpdateRequest {
 
-    @JsonProperty("current_password")
-    @NotBlank
-    private String currentPassword;
-
     @JsonProperty("new_password")
     @NotBlank
     private String newPassword;

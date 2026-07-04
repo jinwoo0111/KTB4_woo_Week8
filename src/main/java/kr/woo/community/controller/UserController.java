@@ -87,6 +87,22 @@ public class UserController {
 
         return ResponseEntity.ok(response);
     }
+
+    // GET /users/{userId} - 회원정보 조회
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<ApiResponse<UserInfoResponse>> getUser(
+            @PathVariable Long userId
+    ) {
+        UserInfoResponse userInfoResponse = userService.getUser(userId);
+
+        ApiResponse<UserInfoResponse> response = new ApiResponse<>(
+                "user_get_success",
+                userInfoResponse
+        );
+
+        return ResponseEntity.ok(response);
+    }
 }
+
 
 

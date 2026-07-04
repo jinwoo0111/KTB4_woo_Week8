@@ -15,6 +15,7 @@ import kr.woo.community.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.format.DateTimeFormatter;
 
@@ -51,32 +52,27 @@ public class PostService {
             throw new InvalidPaginationParameterException();
         }
 
-        List<Post> allPosts = postRepository.findAll();
-        List<Post> filteredPosts = new ArrayList<>();
+        // 조건에 맞는 게시글 size + 1 개 조회
+        List<Post> posts = postRepository.findPostsByCursor(
+                cursor,
+                PageRequest.of(0, size + 1)
+        );
 
-        // cursor보다 작거나 cursor가 null이면 전부다
-        for(Post post : allPosts){
-            if(!post.isDeleted() && (cursor == null || post.getId() < cursor)){
-                filteredPosts.add(post);
-            }
-        }
-
-        // 응답 가능한 게시글 수가 요청 size보다 크면 다음 페이지가 존재
-        boolean hasNext = filteredPosts.size() > size;
+        // 응답 가능한 게시글 수가 요청 size 보다 크면 다음 페이지가 존재
+        boolean hasNext = posts.size() > size;
 
         // 실제 응답할 게시글만 pagePosts에 담음
         List<Post> pagePosts = new ArrayList<>();
 
-        int limit = Math.min(size, filteredPosts.size());
+        int limit = Math.min(size, posts.size());
 
-        for(int i=0;i<limit;i++){
-            pagePosts.add(filteredPosts.get(i));
+        for(int i=0;i<limit;i++) {
+            pagePosts.add(posts.get(i));
         }
 
-        // 응답으로 내보낼 PostSummaryResponse DTO (서버 내부 데이터 -> API 응답용 데이터)
         List<PostSummaryResponse> postResponses = new ArrayList<>();
 
-        for(Post post : pagePosts){
+        for (Post post : pagePosts) {
             postResponses.add(new PostSummaryResponse(
                     post.getId(),
                     post.getTitle(),
@@ -87,11 +83,9 @@ public class PostService {
                     post.getAuthor().getNickname()
             ));
         }
-
-        // 응답 게시물의 마지막 아이디를 다음 cursor로 지정
         Long nextCursor = null;
-        if(hasNext && !pagePosts.isEmpty()){
-            nextCursor = pagePosts.get(pagePosts.size()-1).getId();
+        if(hasNext && !pagePosts.isEmpty()) {
+            nextCursor = pagePosts.get(pagePosts.size() -1).getId();
         }
 
         return new PostListResponse(

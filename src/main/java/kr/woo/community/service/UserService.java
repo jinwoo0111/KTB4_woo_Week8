@@ -85,11 +85,8 @@ public class UserService {
     // 비밀번호 수정 처리
     @Transactional
     public void updatePassword(Long userId, UserPasswordUpdateRequest request) {
-        User user = findById(userId);
-
-        if(!user.getPassword().equals(request.getCurrentPassword())) {
-            throw new PasswordMismatchException();
-        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         user.changePassword(request.getNewPassword());
     }
@@ -100,4 +97,17 @@ public class UserService {
         User user = findById(userId);
         user.softDelete();
     }
+
+    public UserInfoResponse getUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+        return new UserInfoResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getNickname(),
+                user.getProfileImage()
+        );
+    }
+
 }
