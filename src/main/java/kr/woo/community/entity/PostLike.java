@@ -30,6 +30,11 @@ public class PostLike {
     public PostLike(Post post, User user) {
         this.post = post;
         this.user = user;
+    }
+
+    @PrePersist
+    void prePersist() {
         this.createdAt = LocalDateTime.now();
     }
+
 }

@@ -1,7 +1,6 @@
 package kr.woo.community.entity;
 
 import jakarta.persistence.*;
-import kr.woo.community.entity.Post;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -42,35 +41,38 @@ public class User {
     private LocalDateTime deletedAt;
 
     @OneToMany(mappedBy = "author")
-    List<Post> post = new ArrayList<>();
+    private List<Post> post = new ArrayList<>();
 
     public User(String email, String password, String nickname, String profileImage) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.profileImage = profileImage;
+    }
 
+    @PrePersist
+    void prePersist() {
         this.createdAt = LocalDateTime.now();
-        this.updatedAt = null;
-        this.deletedAt = null;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 
     // 이름 수정
     public void changeNickname(String nickname) {
         this.nickname = nickname;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 프로필 이미지 수정
     public void changeProfileImage(String profileImage){
         this.profileImage = profileImage;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 비밀번호 수정
     public void changePassword(String password) {
         this.password = password;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 회원 삭제
@@ -79,7 +81,7 @@ public class User {
     }
 
     // 삭제 여부
-    public Boolean isDeleted() {
+    public boolean isDeleted() {
         return this.deletedAt != null;
     }
 }

@@ -52,8 +52,18 @@ public class Post {
         this.content = content;
         this.contentImage = contentImage;
         this.author = author;
+    }
+
+    @PrePersist
+    public void prePersist() {
         this.createdAt = LocalDateTime.now();
     }
+
+    @PreUpdate
+    public void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
     // 댓글 수 증가
     public void increaseCommentCount() {
         this.commentCount++;
@@ -86,19 +96,16 @@ public class Post {
     // 제목 수정
     public void changeTitle(String title) {
         this.title = title;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 게시글 내용 수정
     public void changeContent(String content) {
         this.content = content;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 게시글 이미지 수정
     public void changeContentImage(String contentImage) {
         this.contentImage = contentImage;
-        this.updatedAt = LocalDateTime.now();
     }
 
     // 게시글 삭제

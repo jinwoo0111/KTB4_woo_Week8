@@ -40,12 +40,20 @@ public class Comment {
         this.post = post;
         this.author = author;
         this.content = content;
+    }
+
+    @PrePersist
+    void prePersist() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 
     public void changeContent(String content) {
         this.content = content;
-        this.updatedAt = LocalDateTime.now();
     }
 
     public void softDelete() {
