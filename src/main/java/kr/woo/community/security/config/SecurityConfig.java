@@ -1,6 +1,7 @@
 package kr.woo.community.security.config;
 
 import kr.woo.community.security.filter.JWTFilter;
+import kr.woo.community.security.filter.LoginFilter;
 import kr.woo.community.security.jwt.JWTUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -62,16 +63,14 @@ public class SecurityConfig {
                 .httpBasic(httpBasic -> httpBasic.disable())
 
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/login", "signup").permitAll()
+                        .requestMatchers("/users/signup", "/users/login").permitAll()
                         .requestMatchers("/admin").hasAuthority("ADMIN")
                         .anyRequest().authenticated())
 
 
                 .addFilterBefore(new JWTFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class)
 
-
-                .addFilterAfter(new filter.LoginFilter(authenticationManager(), jwtUtil), JWTFilter.class)
-
+                .addFilterAt(new LoginFilter(authenticationManager(), jwtUtil), UsernamePasswordAuthenticationFilter.class)
 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
