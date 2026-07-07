@@ -28,6 +28,11 @@ public class UserController {
                 .body(response);
     }
 
+
+    /*
+    //ServletFilter 단계에서 login 담당해서 제외
+
+
     // POST /users/login - 로그인
     @PostMapping("/users/login")
     public ResponseEntity<ApiResponse<UserLoginResponse>> login(
@@ -40,6 +45,7 @@ public class UserController {
         );
         return ResponseEntity.ok(response);
     }
+    */
 
     // PATCH /users/{userId} - 회원정보 수정
     @PatchMapping("/users/{userId}")
