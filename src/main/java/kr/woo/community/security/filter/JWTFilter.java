@@ -1,30 +1,32 @@
 package kr.woo.community.security.filter;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import kr.woo.community.entity.User;
+import kr.woo.community.entity.Role;
 import kr.woo.community.security.jwt.JWTUtil;
 import kr.woo.community.security.user.CustomUserDetails;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.security.Security;
 
-@Slf4j
-@RequiredArgsConstructor
 public class JWTFilter extends OncePerRequestFilter {
 
     private final JWTUtil jwtUtil;
 
+    public JWTFilter(JWTUtil jwtUtil) {
+        this.jwtUtil = jwtUtil;
+    }
+
     @Override
-    protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
         throws ServletException, IOException {
 
         String authorizationHeader = request.getHeader("Authorization");
@@ -42,20 +44,27 @@ public class JWTFilter extends OncePerRequestFilter {
                 return;
             }
 
-            User user = User.build()
-                    .email(email)
-                    .password("N/A")
-                    .role(role)
-                    .build();
+            Long userId = jwtUtil.getUserId(token);
+            String email = jwtUtil.getEmail(token);
+            String role = jwtUtil.getRole(token);
 
-            CustomUserDetails customUserDetails = new CustomUserDetails(user);
-            Authentication authenticationToken = new UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.getAuthorities());
+            CustomUserDetails customUserDetails = new CustomUserDetails(
+                    userId,
+                    email,
+                    Role.valueOf(role)
+            );
 
-            if (SecurityContextHolder.getContext().getAuthentication() == null) {
-                SecurityContextHolder.getContext().setAuthentication(authenticationToken);
-            }
-        } catch (Exception e) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "유효하지 않은 토큰입니다.");
+            Authentication authToken = new UsernamePasswordAuthenticationToken(
+                    customUserDetails,
+                    null,
+                    customUserDetails.getAuthorities()
+            );
+
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+
+        } catch (JwtException | IllegalArgumentException e) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            return;
         }
 
         filterChain.doFilter(request, response);
