@@ -1,6 +1,7 @@
-package kr.woo.community.config;
+package kr.woo.community.security.config;
 
-import kr.woo.community.security.LoginFilter;
+import kr.woo.community.security.filter.filter;
+import kr.woo.community.security.jwt.JWTUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -69,7 +70,7 @@ public class SecurityConfig {
                 .addFilterBefore(new JWTFilter(jwtUtil), UsernamePasswordAuthenticationFilter.class)
 
 
-                .addFilterAfter(new LoginFilter(authenticationManager(), jwtUtil), JWTFilter.class)
+                .addFilterAfter(new filter.LoginFilter(authenticationManager(), jwtUtil), JWTFilter.class)
 
 
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));

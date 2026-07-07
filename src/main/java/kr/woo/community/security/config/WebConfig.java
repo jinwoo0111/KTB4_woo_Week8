@@ -1,4 +1,4 @@
-package kr.woo.community.config;
+package kr.woo.community.security.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
