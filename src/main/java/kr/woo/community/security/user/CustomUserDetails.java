@@ -16,12 +16,17 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.singletonList(new SimpleGrantedAuthority(user.getRole().toString()));
+        return Collections.singletonList(new SimpleGrantedAuthority(user.getRole().name()));
     }
 
     @Override
     public String getPassword() {
         return user.getPassword();
+    }
+
+    @Override
+    public String getUsername() {
+        return user.getEmail();
     }
 
     public String getEmail() {
@@ -49,6 +54,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return !user.isDeleted();
     }
 }
