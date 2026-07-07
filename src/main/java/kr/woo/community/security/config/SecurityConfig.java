@@ -1,6 +1,6 @@
 package kr.woo.community.security.config;
 
-import kr.woo.community.security.filter.filter;
+import kr.woo.community.security.filter.JWTFilter;
 import kr.woo.community.security.jwt.JWTUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
