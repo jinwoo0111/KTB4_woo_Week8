@@ -1,5 +1,6 @@
 package kr.woo.community.security.user;
 
+import kr.woo.community.entity.Role;
 import kr.woo.community.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
@@ -12,29 +13,49 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class CustomUserDetails implements UserDetails {
 
-    private final User user;
+    private final Long id;
+    private final String email;
+    private final String password;
+    private final Role role;
+    private final boolean enabled;
+
+    public CustomUserDetails(User user) {
+        this.id = user.getId();
+        this.email = user.getEmail();
+        this.password = user.getPassword();
+        this.role = user.getRole();
+        this.enabled = !user.isDeleted();
+    }
+
+    public CustomUserDetails(Long id, String email, Role role) {
+        this.id = id;
+        this.email = email;
+        this.password = "";
+        this.role = role;
+        this.enabled = true;
+    }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return Collections.singletonList(new SimpleGrantedAuthority(user.getRole().name()));
+        return Collections.singletonList(new SimpleGrantedAuthority(role.name()));
     }
 
     @Override
     public String getPassword() {
-        return user.getPassword();
+        return password;
     }
 
     @Override
     public String getUsername() {
-        return user.getEmail();
+        return email;
     }
 
     public String getEmail() {
-        return user.getEmail();
+        return email;
     }
 
     public Long getId() {
-        return user.getId();
+        return id;
     }
 
     @Override
@@ -54,6 +75,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return !user.isDeleted();
+        return enabled;
     }
 }
