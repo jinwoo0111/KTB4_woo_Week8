@@ -31,6 +31,10 @@ public class User {
     @Column(name = "profile_image")
     private String profileImage;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Role role;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -41,13 +45,14 @@ public class User {
     private LocalDateTime deletedAt;
 
     @OneToMany(mappedBy = "author")
-    private List<Post> post = new ArrayList<>();
+    private List<Post> posts = new ArrayList<>();
 
     public User(String email, String password, String nickname, String profileImage) {
         this.email = email;
         this.password = password;
         this.nickname = nickname;
         this.profileImage = profileImage;
+        this.role = Role.USER;
     }
 
     @PrePersist

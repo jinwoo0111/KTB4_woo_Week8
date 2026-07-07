@@ -33,8 +33,13 @@ public class UserService {
     }
 
     // 회원가입 처리
+    // 중복 email 체크 & 중복 nickname 체크
     @Transactional
     public UserSignupResponse signup(UserSignupRequest request) {
+
+        validateDuplicateEmail(request.getEmail());
+        validateDuplicateNickname(request.getNickname());
+
         User user = new User(request.getEmail(),
                 request.getPassword(),
                 request.getNickname(),
@@ -44,6 +49,20 @@ public class UserService {
         return new UserSignupResponse(
                 user.getId()
         );
+    }
+
+    // 중복 email 체크
+    private void validateDuplicateEmail(String email) {
+        if (userRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("이미 사용중인 이메일입니다.");
+        }
+    }
+
+    // 중복 nickname 체크
+    private void validateDuplicateNickname(String nickname) {
+        if (userRepository.existsByNickname(nickname)) {
+            throw new IllegalArgumentException("이미 사용중인 닉네임입니다");
+        }
     }
 
     // 로그인 처리
