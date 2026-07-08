@@ -19,7 +19,7 @@ public class JWTUtil {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String creatJwt(Long userId, String email, String role, Long expiredMs) {
+    public String createJwt(Long userId, String email, String role, Long expiredMs) {
         Date now = new Date();
 
         return Jwts.builder()

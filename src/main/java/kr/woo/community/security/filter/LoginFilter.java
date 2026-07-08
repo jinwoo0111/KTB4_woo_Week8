@@ -6,20 +6,25 @@ import jakarta.servlet.http.HttpServletResponse;
 import kr.woo.community.security.jwt.JWTUtil;
 import kr.woo.community.security.user.CustomUserDetails;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
-import java.util.Collection;
-import java.util.Iterator;
+import java.io.IOException;
+import java.util.Map;
 
 
 public class LoginFilter extends UsernamePasswordAuthenticationFilter {
 
     private final AuthenticationManager authenticationManager;
     private final JWTUtil jwtUtil;
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     public LoginFilter(AuthenticationManager authenticationManager, JWTUtil jwtUtil) {
         this.authenticationManager = authenticationManager;
@@ -30,27 +35,42 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
     @Override
     public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
     throws AuthenticationException {
-        String email = request.getParameter("email");
-        String password = request.getParameter("password");
+        try {
+            Map<String, String> loginRequest = objectMapper.readValue(
+                    request.getInputStream(),
+                    new TypeReference<>() {}
+            );
 
-        UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(email, password);
-        return authenticationManager.authenticate(authRequest);
+            String email = loginRequest.get("email");
+            String password = loginRequest.get("password");
+
+            UsernamePasswordAuthenticationToken authenticationRequest =
+                    new UsernamePasswordAuthenticationToken(email, password);
+            return authenticationManager.authenticate(authenticationRequest);
+        } catch (IOException e) {
+            throw new AuthenticationServiceException("로그인 요청 처리를 실패했습니다.", e);
+        }
     }
 
     @Override
     protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain, Authentication authentication) {
 
-        CustomUserDetails customUserDetails = (CustomUserDetails) authentication.getPrincipal();
-        Long userId = customUserDetails.getId();
+        CustomUserDetails customUserDetails =
+                (CustomUserDetails) authentication.getPrincipal();
+
+        Long id = customUserDetails.getId();
         String email = customUserDetails.getEmail();
 
-        Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-        Iterator<? extends GrantedAuthority> iterator = authorities.iterator();
-        GrantedAuthority authority = iterator.next();
+        GrantedAuthority authority = authentication.getAuthorities()
+                .iterator()
+                .next();
 
         String role = authority.getAuthority();
-        String token = jwtUtil.createJwt(userId, email, role, 60 * 60 * 1000L);
-        response.addHeader("Authorization", "Bearer " + token);
+
+        String token = jwtUtil.createJwt(id, email, role, 60 * 60 * 1000L);
+
+        response.setHeader("Authorization", "Bearer " + token);
+        response.setStatus(HttpServletResponse.SC_OK);
     }
 
     @Override
