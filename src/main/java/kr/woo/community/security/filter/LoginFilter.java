@@ -29,7 +29,11 @@ public class LoginFilter extends UsernamePasswordAuthenticationFilter {
     public LoginFilter(AuthenticationManager authenticationManager, JWTUtil jwtUtil) {
         this.authenticationManager = authenticationManager;
         this.jwtUtil = jwtUtil;
-        setFilterProcessesUrl("/users/login");
+
+        setRequiresAuthenticationRequestMatcher(request ->
+                "POST".equals(request.getMethod())
+                        && "/users/login".equals(request.getServletPath())
+        );
     }
 
     @Override
