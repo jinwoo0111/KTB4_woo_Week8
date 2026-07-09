@@ -63,6 +63,7 @@ public class UserService {
         }
     }
 
+    /*
     public UserLoginResponse login(UserLoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new LoginFailedException());
@@ -79,6 +80,8 @@ public class UserService {
                 user.getId()
         );
     }
+    */
+
 
     @Transactional
     public UserUpdateResponse updateUser(Long userId, UserUpdateRequest request) {

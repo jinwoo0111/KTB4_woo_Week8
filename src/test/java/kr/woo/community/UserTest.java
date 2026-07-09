@@ -12,6 +12,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
+import java.util.Optional;
+
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -73,5 +75,32 @@ public class UserTest {
 
         verify(userRepository, times(1)).save(any(User.class));
     }
+
+    @Test
+    @DisplayName("회원 정보 수정 성공")
+    void updateUserSuccess() {
+
+        Long userId = 1L;
+
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "oldProfileImage"
+        );
+
+        UserUpdateRequest request = new UserUpdateRequest(
+                "new닉네임",
+                "newProfileImage"
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        userService.updateUser(userId, request);
+
+        assertEquals("new닉네임", user.getNickname());
+        assertEquals("newProfileImage", user.getProfileImage());
+    }
+
 }
 
