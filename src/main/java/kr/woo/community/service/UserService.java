@@ -120,7 +120,11 @@ public class UserService {
 
     // 회원탈퇴 처리
     @Transactional
-    public void deleteUser(Long userId) {
+    public void deleteUser(Long userId, Long loginUserId) {
+        if (!userId.equals(loginUserId)) {
+            throw new AccessDeniedException("본인만 회원정보를 수정할 수 있습니다.");
+        }
+
         User user = findById(userId);
         user.softDelete();
     }

@@ -86,9 +86,10 @@ public class UserController {
     // DELETE /users/{userId} - 회원탈퇴
     @DeleteMapping("/users/{userId}")
     public ResponseEntity<ApiResponse<Void>> deleteUser(
-            @PathVariable Long userId
+            @PathVariable Long userId,
+            @AuthenticationPrincipal CustomUserDetails loginUser
     ) {
-        userService.deleteUser(userId);
+        userService.deleteUser(userId, loginUser.getId());
 
         ApiResponse<Void> response = new ApiResponse<>(
                 "user_delete_success",
