@@ -73,7 +73,7 @@ public class UserController {
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody UserPasswordUpdateRequest request
     ) {
-        userService.updatePassword(userId, loginUser, request);
+        userService.updatePassword(userId, loginUser.getId(), request);
 
         ApiResponse<Void> response = new ApiResponse<>(
                 "password_update_success",
