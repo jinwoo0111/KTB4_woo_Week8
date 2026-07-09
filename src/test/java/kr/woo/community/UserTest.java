@@ -174,6 +174,7 @@ public class UserTest {
     @DisplayName("비밀번호 수정 성공")
     void updatePasswordSuccess() {
         Long userId = 1L;
+        Long loginUserId = 1L;
         User user = new User(
                 "test@test.com",
                 "oldPassword1234!",
@@ -189,7 +190,7 @@ public class UserTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
-        userService.updatePassword(userId, request);
+        userService.updatePassword(userId, loginUserId, request);
         assertEquals(encodedPassword, user.getPassword());
     }
 
@@ -197,12 +198,13 @@ public class UserTest {
     @DisplayName("비밀번호 수정 시, 유저가 존재하지 않으면 예외가 발생한다")
     void updatePasswordFail() {
         Long userId = 1L;
+        Long loginUserId = 1L;
         UserPasswordUpdateRequest request = new UserPasswordUpdateRequest(
                 "newPw1234!"
         );
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
         assertThrows(UserNotFoundException.class, ()-> {
-            userService.updatePassword(userId, request);
+            userService.updatePassword(userId, loginUserId,request);
         });
     }
 
