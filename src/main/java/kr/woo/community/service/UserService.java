@@ -85,8 +85,7 @@ public class UserService {
 
     @Transactional
     public UserUpdateResponse updateUser(Long userId, UserUpdateRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        User user = findById(userId);
 
         if(request.getNickname()!=null) {
             user.changeNickname(request.getNickname());
@@ -104,8 +103,7 @@ public class UserService {
 
     @Transactional
     public void updatePassword(Long userId, UserPasswordUpdateRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        User user = findById(userId);
 
         String encodedPassword = passwordEncoder.encode(request.getNewPassword());
 
@@ -120,8 +118,7 @@ public class UserService {
     }
 
     public UserInfoResponse getUser(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+        User user = findById(userId);
 
         return new UserInfoResponse(
                 user.getId(),

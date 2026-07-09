@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 
@@ -175,11 +176,30 @@ public class UserTest {
                 "test닉네임",
                 "testProfileImage"
         );
+        String rawPassword = "newPassword1234!";
         UserPasswordUpdateRequest request = new UserPasswordUpdateRequest(
-                "newPassword1234!"
+                rawPassword
         );
+
+        String encodedPassword = "encodedPassword";
+
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        String newPassword
+        when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
+        userService.updatePassword(userId, request);
+        assertEquals(encodedPassword, user.getPassword());
+    }
+
+    @Test
+    @DisplayName("비밀번호 수정 시, 유저가 존재하지 않으면 예외가 발생한다")
+    void updatePasswordFail() {
+        Long userId = 1L;
+        UserPasswordUpdateRequest request = new UserPasswordUpdateRequest(
+                "newPw1234!"
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        assertThrows(UserNotFoundException.class, ()-> {
+            userService.updatePassword(userId, request);
+        });
     }
 }
 
