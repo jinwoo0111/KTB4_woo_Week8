@@ -70,9 +70,10 @@ public class UserController {
     @PatchMapping("/users/{userId}/password")
     public ResponseEntity<ApiResponse<Void>> updatePassword(
             @PathVariable Long userId,
+            @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody UserPasswordUpdateRequest request
     ) {
-        userService.updatePassword(userId, request);
+        userService.updatePassword(userId, loginUser, request);
 
         ApiResponse<Void> response = new ApiResponse<>(
                 "password_update_success",

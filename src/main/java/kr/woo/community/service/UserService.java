@@ -106,7 +106,11 @@ public class UserService {
     }
 
     @Transactional
-    public void updatePassword(Long userId, UserPasswordUpdateRequest request) {
+    public void updatePassword(Long userId, Long loginUserId, UserPasswordUpdateRequest request) {
+        if (!userId.equals(loginUserId)) {
+            throw new AccessDeniedException("본인만 회원정보를 수정할 수 있습니다.");
+        }
+
         User user = findById(userId);
 
         String encodedPassword = passwordEncoder.encode(request.getNewPassword());
