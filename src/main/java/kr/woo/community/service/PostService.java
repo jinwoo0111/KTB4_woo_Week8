@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.format.DateTimeFormatter;
 
@@ -157,8 +158,13 @@ public class PostService {
     // 게시글 수정 처리
     // 게시글을 조회한 뒤 요청에 포함된 필드만 수정하고 응답 DTO로 반환
     @Transactional
-    public PostUpdateResponse updatePost(Long postId, PostUpdateRequest request) {
+    public PostUpdateResponse updatePost(Long postId, Long loginUserId,PostUpdateRequest request) {
+
         Post post = findById(postId);
+
+        if (!post.getAuthor().getId().equals(loginUserId)) {
+            throw new AccessDeniedException("게시글 작성자만 수정할 수 있습니다.");
+        }
 
         if(request.getTitle() != null) {
             if(request.getTitle().isBlank()) {
@@ -188,8 +194,13 @@ public class PostService {
 
     // 게시글 삭제
     @Transactional
-    public void deletePost(Long postId){
+    public void deletePost(Long postId, Long loginUserId) {
+
         Post post = findById(postId);
+
+        if (!post.getAuthor().getId().equals(loginUserId)) {
+            throw new AccessDeniedException("게시글 작성자만 수정할 수 있습니다.");
+        }
 
         List<Comment> comments = commentRepository.findByPost_IdAndDeletedAtIsNullOrderByIdAsc(postId);
         for(Comment comment : comments) {

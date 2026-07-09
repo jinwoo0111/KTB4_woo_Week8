@@ -4,10 +4,12 @@ import jakarta.validation.Valid;
 import kr.woo.community.common.ApiResponse;
 import kr.woo.community.dto.*;
 import kr.woo.community.service.PostService;
+import kr.woo.community.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequiredArgsConstructor
@@ -45,10 +47,11 @@ public class PostController {
     // 게시글 생성 요청을 받아 새 게시글 저장하고 201 Created 응답 반환
     @PostMapping("/posts")
     public ResponseEntity<ApiResponse<PostCreateResponse>> createPost(
+            @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody PostCreateRequest request
     ) {
         PostCreateResponse postCreateResponse = postService.createPost(
-                request.getAuthorId(),
+                loginUser.getId(),
                 request);
         ApiResponse<PostCreateResponse> response = new ApiResponse<>(
                 "post_create_success",
@@ -63,9 +66,10 @@ public class PostController {
     @PatchMapping("/posts/{postId}")
     public ResponseEntity<ApiResponse<PostUpdateResponse>> updatePost (
             @PathVariable Long postId,
+            @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody PostUpdateRequest request
     ) {
-        PostUpdateResponse updateResponse = postService.updatePost(postId, request);
+        PostUpdateResponse updateResponse = postService.updatePost(postId, loginUser.getId(), request);
         ApiResponse<PostUpdateResponse> response = new ApiResponse<>(
                 "post_update_success",
                 updateResponse
@@ -76,9 +80,10 @@ public class PostController {
     // DELETE /posts/{postId} - 게시글 삭제
     @DeleteMapping("/posts/{postId}")
     public ResponseEntity<ApiResponse<Void>> deletePost(
-            @PathVariable Long postId
+            @PathVariable Long postId,
+            @AuthenticationPrincipal CustomUserDetails loginUser
     ) {
-        postService.deletePost(postId);
+        postService.deletePost(postId, loginUser.getId());
         ApiResponse<Void> response = new ApiResponse<>(
                 "post_delete_success",
                 null

@@ -212,6 +212,7 @@ public class UserTest {
     @DisplayName("회원탈퇴 성공 시 유저가 삭제 상태로 변경된다")
     void deleteUserSuccess() {
         Long userId = 1L;
+        Long loginUserId = 1L;
 
         User user = new User(
                 "test@test.com",
@@ -221,7 +222,7 @@ public class UserTest {
         );
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        userService.deleteUser(userId);
+        userService.deleteUser(userId, loginUserId);
 
         assertTrue(user.isDeleted());
     }
@@ -230,9 +231,10 @@ public class UserTest {
     @DisplayName("회원탈퇴 시 유저가 존재하지 않으면 예외가 발생한다")
     void deleteUserFail() {
         Long userId = 1L;
+        Long loginUserId = 1L;
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
         assertThrows(UserNotFoundException.class, () -> {
-            userService.deleteUser(userId);
+            userService.deleteUser(userId, loginUserId);
         });
     }
 }
