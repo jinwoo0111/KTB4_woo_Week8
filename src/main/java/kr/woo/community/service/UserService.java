@@ -1,7 +1,6 @@
 package kr.woo.community.service;
 
 import kr.woo.community.dto.*;
-import kr.woo.community.exception.LoginFailedException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.entity.User;
@@ -9,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
 
 @Service
 @RequiredArgsConstructor
@@ -84,7 +84,11 @@ public class UserService {
 
 
     @Transactional
-    public UserUpdateResponse updateUser(Long userId, UserUpdateRequest request) {
+    public UserUpdateResponse updateUser(Long userId, Long loginUserId, UserUpdateRequest request) {
+        if (!userId.equals(loginUserId)) {
+            throw new AccessDeniedException("본인만 회원정보를 수정할 수 있습니다.");
+        }
+
         User user = findById(userId);
 
         if(request.getNickname()!=null) {

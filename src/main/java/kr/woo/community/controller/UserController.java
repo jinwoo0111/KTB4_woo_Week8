@@ -4,10 +4,12 @@ import jakarta.validation.Valid;
 import kr.woo.community.common.ApiResponse;
 import kr.woo.community.dto.*;
 import kr.woo.community.service.UserService;
+import kr.woo.community.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequiredArgsConstructor
@@ -51,9 +53,10 @@ public class UserController {
     @PatchMapping("/users/{userId}")
     public ResponseEntity<ApiResponse<UserUpdateResponse>> updateUser(
             @PathVariable Long userId,
+            @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody UserUpdateRequest request
     ) {
-        UserUpdateResponse updateResponse = userService.updateUser(userId, request);
+        UserUpdateResponse updateResponse = userService.updateUser(userId, loginUser.getId(), request);
 
         ApiResponse<UserUpdateResponse> response = new ApiResponse<>(
                 "user_update_success",
