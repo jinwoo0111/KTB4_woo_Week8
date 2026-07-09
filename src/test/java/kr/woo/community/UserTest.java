@@ -83,6 +83,7 @@ public class UserTest {
     void updateUserSuccess() {
 
         Long userId = 1L;
+        Long loginUserId = 1L;
 
         User user = new User(
                 "test@test.com",
@@ -98,7 +99,7 @@ public class UserTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        userService.updateUser(userId, request);
+        userService.updateUser(userId, loginUserId, request);
 
         assertEquals("new닉네임", user.getNickname());
         assertEquals("newProfileImage", user.getProfileImage());
@@ -108,6 +109,7 @@ public class UserTest {
     @DisplayName("프로필 이미지만 수정하면 닉네임은 유지되고 프로필 이미지만 변경된다")
     void updateProfileImageSuccess() {
         Long userId = 1L;
+        Long loginUserId = 1L;
 
         User user = new User(
                 "test@test.com",
@@ -123,7 +125,7 @@ public class UserTest {
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        userService.updateUser(userId, request);
+        userService.updateUser(userId, loginUserId, request);
         assertEquals("old닉네임", user.getNickname());
         assertEquals("newProfileImage", user.getProfileImage());
     }
@@ -132,6 +134,7 @@ public class UserTest {
     @DisplayName("닉네임만 수정하면, profileImage는 유지되고 닉네임만 수정된다")
     void updateNicknameSuccess() {
         Long userId = 1L;
+        Long loginUserId = 1L;
 
         User user = new User(
                 "test@test.com",
@@ -146,7 +149,7 @@ public class UserTest {
         );
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        userService.updateUser(userId, request);
+        userService.updateUser(userId, loginUserId, request);
         assertEquals("new닉네임", user.getNickname());
         assertEquals("oldProfileImage", user.getProfileImage());
     }
@@ -155,13 +158,14 @@ public class UserTest {
     @DisplayName("회원정보 수정 시, 유저가 존재하지 않으면 예외가 발생한다")
     void updateUserFail() {
          Long userId = 1L;
+        Long loginUserId = 1L;
          UserUpdateRequest request = new UserUpdateRequest(
                  null,
                  null
          );
          when(userRepository.findById(userId)).thenReturn(Optional.empty());
          assertThrows(UserNotFoundException.class, ()-> {
-             userService.updateUser(userId, request);
+             userService.updateUser(userId, loginUserId,request);
          });
 
     }
