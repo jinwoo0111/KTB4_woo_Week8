@@ -164,6 +164,23 @@ public class UserTest {
          });
 
     }
+
+    @Test
+    @DisplayName("비밀번호 수정 성공")
+    void updatePasswordSuccess() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "oldPassword1234!",
+                "test닉네임",
+                "testProfileImage"
+        );
+        UserPasswordUpdateRequest request = new UserPasswordUpdateRequest(
+                "newPassword1234!"
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        String newPassword
+    }
 }
 
 

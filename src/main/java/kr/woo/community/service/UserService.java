@@ -85,7 +85,9 @@ public class UserService {
 
     @Transactional
     public UserUpdateResponse updateUser(Long userId, UserUpdateRequest request) {
-        User user = findById(userId);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
         if(request.getNickname()!=null) {
             user.changeNickname(request.getNickname());
         }
