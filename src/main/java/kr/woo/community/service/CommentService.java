@@ -16,6 +16,7 @@ import kr.woo.community.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.format.DateTimeFormatter;
 
@@ -42,7 +43,7 @@ public class CommentService {
 
     // 댓글 생성 - 게시글 존재 확인 후 댓글을 저장하고 게시글 댓글 수를 증가
     @Transactional
-    public CommentCreateResponse createComment(Long postId, CommentCreateRequest request){
+    public CommentCreateResponse createComment(Long postId, Long loginUserId, CommentCreateRequest request){
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new PostNotFoundException());
 
@@ -50,7 +51,7 @@ public class CommentService {
             throw new PostNotFoundException();
         }
 
-        User author = userRepository.findById(request.getAuthorId())
+        User author = userRepository.findById(loginUserId)
                 .orElseThrow(() -> new UserNotFoundException());
 
         if (author.isDeleted()) {
@@ -72,7 +73,7 @@ public class CommentService {
 
     // 댓글 삭제 처리 - 게시글과 댓글 존재 여부를 확인한 뒤 댓글을 삭제하고 게시글 댓글 수 감소
     @Transactional
-    public void deleteComment(Long postId, Long commentId) {
+    public void deleteComment(Long postId, Long commentId, Long loginUserId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new PostNotFoundException());
 
@@ -86,6 +87,9 @@ public class CommentService {
             throw new CommentNotFoundException();
         }
 
+        if (!comment.getAuthor().getId().equals(loginUserId)) {
+            throw new AccessDeniedException("댓글 작성자만 삭제할 수 있습니다.");
+        }
 
         post.decreaseCommentCount();
         comment.softDelete();
@@ -96,6 +100,7 @@ public class CommentService {
     public CommentUpdateResponse updateComment(
             Long postId,
             Long commentId,
+            Long loginUserId,
             CommentUpdateRequest request
     ){
         Post post = postRepository.findById(postId)
@@ -110,6 +115,10 @@ public class CommentService {
 
         if (!comment.getPost().getId().equals(postId)) {
             throw new CommentNotFoundException();
+        }
+
+        if (!comment.getAuthor().getId().equals(loginUserId)) {
+            throw new AccessDeniedException("댓글 작성자만 삭제할 수 있습니다.");
         }
 
         comment.changeContent(request.getContent());
