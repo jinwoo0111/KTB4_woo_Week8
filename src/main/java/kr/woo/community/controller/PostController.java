@@ -33,7 +33,7 @@ public class PostController {
 
     @GetMapping("/posts/{postId}")
     public ResponseEntity<ApiResponse<PostDetailResponse>> getPostDetail(
-            @PathVariable Long postId
+            @PathVariable Long postId,
             @AuthenticationPrincipal CustomUserDetails loginUser
     ) {
         Long loginUserId = loginUser == null
