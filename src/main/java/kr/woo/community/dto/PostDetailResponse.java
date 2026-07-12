@@ -27,6 +27,9 @@ public class PostDetailResponse {
     @JsonProperty("like_count")
     private int likeCount;
 
+    @JsonProperty("liked_by_me")
+    private boolean likedByMe;
+
     @JsonProperty("comment_count")
     private int commentCount;
 

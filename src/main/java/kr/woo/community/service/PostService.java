@@ -99,7 +99,7 @@ public class PostService {
 
     // 게시글 상세 조회
     @Transactional
-    public PostDetailResponse getPostDetail(Long postId){
+    public PostDetailResponse getPostDetail(Long postId, Long loginUserId){
         Post post = findById(postId);
 
         post.increaseViewCount();
@@ -116,6 +116,12 @@ public class PostService {
             ));
         }
 
+        boolean likedByMe = false;
+
+        if(loginUserId != null) {
+            likedByMe = postLikeRepository.existsByPost_IdAndUser_Id(postId, loginUserId);
+        }
+
         return new PostDetailResponse(
                 post.getId(),
                 post.getTitle(),
@@ -124,6 +130,7 @@ public class PostService {
                 post.getContent(),
                 post.getContentImage(),
                 post.getLikeCount(),
+                likedByMe,
                 post.getCommentCount(),
                 post.getViewCount(),
                 commentResponses
