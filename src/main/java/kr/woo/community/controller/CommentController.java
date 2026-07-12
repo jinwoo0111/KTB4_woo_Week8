@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+        import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequiredArgsConstructor
@@ -26,7 +26,7 @@ public class CommentController {
             @PathVariable Long postId,
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody CommentCreateRequest request
-            ){
+    ){
         CommentCreateResponse commentResponse = commentService.createComment(postId, loginUser.getId(), request);
         ApiResponse<CommentCreateResponse> response = new ApiResponse<>(
                 "comments_create_success",
@@ -42,7 +42,7 @@ public class CommentController {
             @PathVariable Long postId,
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @PathVariable Long commentId
-            ) {
+    ) {
         commentService.deleteComment(postId, loginUser.getId(), commentId);
         ApiResponse<Void> response = new ApiResponse<>(
                 "comment_delete_success",
@@ -58,7 +58,7 @@ public class CommentController {
             @PathVariable Long commentId,
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody CommentUpdateRequest request
-            ) {
+    ) {
         CommentUpdateResponse updateResponse = commentService.updateComment(postId, commentId, loginUser.getId(),request);
         ApiResponse<CommentUpdateResponse> response = new ApiResponse<>(
                 "comment_update_success",

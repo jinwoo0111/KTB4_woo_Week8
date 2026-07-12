@@ -68,7 +68,12 @@ public class CommentService {
 
         commentRepository.save(comment);
 
-        return new CommentCreateResponse(comment.getId());
+        return new CommentCreateResponse(
+                comment.getId(),
+                comment.getAuthor().getNickname(),
+                comment.getCreatedAt().format(FORMATTER),
+                comment.getContent()
+        );
     }
 
     // 댓글 삭제 처리 - 게시글과 댓글 존재 여부를 확인한 뒤 댓글을 삭제하고 게시글 댓글 수 감소
