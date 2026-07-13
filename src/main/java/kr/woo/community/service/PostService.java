@@ -81,7 +81,10 @@ public class PostService {
                     post.getLikeCount(),
                     post.getCommentCount(),
                     post.getViewCount(),
-                    post.getAuthor().getNickname()
+                    post.getAuthor().getNickname(),
+                    post.getContent(),
+                    post.getContentImage(),
+                    post.getAuthor().getProfileImage()
             ));
         }
         Long nextCursor = null;

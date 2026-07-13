@@ -1,8 +1,11 @@
 package kr.woo.community.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
-// 게시판 목록 조회시 보여지는 게시물 정보
+@Getter
+@AllArgsConstructor
 public class PostSummaryResponse {
 
     @JsonProperty("post_id")
@@ -23,49 +26,11 @@ public class PostSummaryResponse {
 
     private String author;
 
-    public PostSummaryResponse(
-            Long postId,
-            String title,
-            String createdAt,
-            int likeCount,
-            int commentCount,
-            int viewCount,
-            String author
-    ) {
-        this.postId = postId;
-        this.title = title;
-        this.createdAt = createdAt;
-        this.likeCount = likeCount;
-        this.commentCount = commentCount;
-        this.viewCount = viewCount;
-        this.author = author;
-    }
+    private String content;
 
-    public Long getPostId() {
-        return postId;
-    }
+    @JsonProperty("content_image")
+    private String contentImage;
 
-    public String getTitle() {
-        return title;
-    }
-
-    public String getCreatedAt() {
-        return createdAt;
-    }
-
-    public int getLikeCount() {
-        return likeCount;
-    }
-
-    public int getCommentCount() {
-        return commentCount;
-    }
-
-    public int getViewCount() {
-        return viewCount;
-    }
-
-    public String getAuthor() {
-        return author;
-    }
+    @JsonProperty("author_profile_image")
+    private String authorProfileImage;
 }
