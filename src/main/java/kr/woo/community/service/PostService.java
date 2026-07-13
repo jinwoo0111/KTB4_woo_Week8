@@ -144,8 +144,8 @@ public class PostService {
     // 게시글 생성 요청 DTO를 받아 Repository에 저장하고,
     // 저장된 Post 도메인을 게시글 생성 응답 DTO로 변환해 반환
     @Transactional
-    public PostCreateResponse createPost(Long authorId, PostCreateRequest request) {
-        User author = userRepository.findById(authorId).orElseThrow(() -> new UserNotFoundException());
+    public PostCreateResponse createPost(Long loginUserId, PostCreateRequest request) {
+        User author = userRepository.findById(loginUserId).orElseThrow(() -> new UserNotFoundException());
         if(author.isDeleted()) {
             throw new UserNotFoundException();
         }
