@@ -43,7 +43,7 @@ public class CommentController {
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @PathVariable Long commentId
     ) {
-        commentService.deleteComment(postId, loginUser.getId(), commentId);
+        commentService.deleteComment(postId, commentId, loginUser.getId());
         ApiResponse<Void> response = new ApiResponse<>(
                 "comment_delete_success",
                 null

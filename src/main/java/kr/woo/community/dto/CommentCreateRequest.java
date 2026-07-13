@@ -10,11 +10,6 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 public class CommentCreateRequest {
-
-    @NotNull
-    @JsonProperty("author_id")
-    private Long authorId;
-
     @NotBlank
     private String content;
 }
