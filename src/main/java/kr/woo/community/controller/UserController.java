@@ -7,9 +7,11 @@ import kr.woo.community.service.UserService;
 import kr.woo.community.security.user.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -17,7 +19,10 @@ public class UserController {
     private final UserService userService;
 
     // POST /users/signup - 회원가입
-    @PostMapping("/users/signup")
+    @PostMapping(
+            value = "/users/signup",
+            consumes = MediaType.APPLICATION_JSON_VALUE
+    )
     public ResponseEntity<ApiResponse<UserSignupResponse>> signup(
             @Valid @RequestBody UserSignupRequest request
     ) {
@@ -26,6 +31,32 @@ public class UserController {
                 "register_success",
                 userSignupResponse
         );
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(response);
+    }
+
+    @PostMapping(
+            value = "/users/signup",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<UserSignupResponse>> signupWithImage(
+            @RequestParam("email") String email,
+            @RequestParam("password") String password,
+            @RequestParam("nickname") String nickname,
+            @RequestPart("profile_image") MultipartFile profileImage
+    ) {
+        UserSignupResponse userSignupResponse = userService.signup(
+                email,
+                password,
+                nickname,
+                profileImage
+        );
+
+        ApiResponse<UserSignupResponse> response = new ApiResponse<>(
+                "register_success",
+                userSignupResponse
+        );
+
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(response);
     }
@@ -114,6 +145,5 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 }
-
 
 

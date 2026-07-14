@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final FileStorageService fileStorageService;
 
     public User findById(Long id) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserNotFoundException());
@@ -46,6 +48,39 @@ public class UserService {
                 request.getProfileImage()
         );
         userRepository.save(user);
+        return new UserSignupResponse(
+                user.getId()
+        );
+    }
+
+    @Transactional
+    public UserSignupResponse signup(
+            String email,
+            String password,
+            String nickname,
+            MultipartFile profileImage
+    ) {
+        validateDuplicateEmail(email);
+        validateDuplicateNickname(nickname);
+
+        String profileImagePath =
+                fileStorageService.saveImage(
+                        profileImage,
+                        "profile"
+                );
+
+        String encodedPassword =
+                passwordEncoder.encode(password);
+
+        User user = new User(
+                email,
+                encodedPassword,
+                nickname,
+                profileImagePath
+        );
+
+        userRepository.save(user);
+
         return new UserSignupResponse(
                 user.getId()
         );
