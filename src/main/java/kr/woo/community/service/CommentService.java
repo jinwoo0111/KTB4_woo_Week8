@@ -70,6 +70,7 @@ public class CommentService {
 
         return new CommentCreateResponse(
                 comment.getId(),
+                comment.getAuthor().getId(),
                 comment.getAuthor().getNickname(),
                 comment.getCreatedAt().format(FORMATTER),
                 comment.getContent()
@@ -129,6 +130,7 @@ public class CommentService {
         comment.changeContent(request.getContent());
         return new CommentUpdateResponse(
                 comment.getId(),
+                comment.getAuthor().getId(),
                 comment.getAuthor().getNickname(),
                 comment.getCreatedAt().format(FORMATTER),
                 comment.getContent()

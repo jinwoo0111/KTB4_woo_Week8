@@ -113,6 +113,7 @@ public class PostService {
         for(Comment comment : comments){
             commentResponses.add(new CommentResponse(
                     comment.getId(),
+                    comment.getAuthor().getId(),
                     comment.getAuthor().getNickname(),
                     comment.getCreatedAt().format(FORMATTER),
                     comment.getContent()
@@ -129,6 +130,7 @@ public class PostService {
                 post.getId(),
                 post.getTitle(),
                 post.getCreatedAt().format(FORMATTER),
+                post.getAuthor().getId(),
                 post.getAuthor().getNickname(),
                 post.getContent(),
                 post.getContentImage(),

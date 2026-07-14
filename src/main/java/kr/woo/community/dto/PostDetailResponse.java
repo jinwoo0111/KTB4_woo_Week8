@@ -18,6 +18,9 @@ public class PostDetailResponse {
     @JsonProperty("created_at")
     private String createdAt;
 
+    @JsonProperty("author_id")
+    private Long authorId;
+
     private String author;
     private String content;
 

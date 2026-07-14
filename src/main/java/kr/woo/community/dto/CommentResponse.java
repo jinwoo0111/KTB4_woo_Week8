@@ -10,6 +10,9 @@ public class CommentResponse {
     @JsonProperty("comment_id")
     private Long commentId;
 
+    @JsonProperty("author_id")
+    private Long authorId;
+
     @JsonProperty("author_nickname")
     private String authorNickname;
 
