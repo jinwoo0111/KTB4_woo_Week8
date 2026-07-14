@@ -63,11 +63,15 @@ public class UserService {
         validateDuplicateEmail(email);
         validateDuplicateNickname(nickname);
 
-        String profileImagePath =
-                fileStorageService.saveImage(
-                        profileImage,
-                        "profile"
-                );
+        String profileImagePath = null;
+
+        if(profileImage != null && !profileImage.isEmpty()) {
+            profileImagePath =
+                    fileStorageService.saveImage(
+                            profileImage,
+                            "profile"
+                    );
+        }
 
         String encodedPassword =
                 passwordEncoder.encode(password);

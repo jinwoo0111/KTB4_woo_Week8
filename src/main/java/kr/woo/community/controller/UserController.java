@@ -21,29 +21,14 @@ public class UserController {
     // POST /users/signup - 회원가입
     @PostMapping(
             value = "/users/signup",
-            consumes = MediaType.APPLICATION_JSON_VALUE
-    )
-    public ResponseEntity<ApiResponse<UserSignupResponse>> signup(
-            @Valid @RequestBody UserSignupRequest request
-    ) {
-        UserSignupResponse userSignupResponse = userService.signup(request);
-        ApiResponse<UserSignupResponse> response = new ApiResponse<>(
-                "register_success",
-                userSignupResponse
-        );
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(response);
-    }
-
-    @PostMapping(
-            value = "/users/signup",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<ApiResponse<UserSignupResponse>> signupWithImage(
             @RequestParam("email") String email,
             @RequestParam("password") String password,
             @RequestParam("nickname") String nickname,
-            @RequestPart("profile_image") MultipartFile profileImage
+            @RequestPart(value = "profile_image", required = false)
+            MultipartFile profileImage
     ) {
         UserSignupResponse userSignupResponse = userService.signup(
                 email,
@@ -145,5 +130,4 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 }
-
 

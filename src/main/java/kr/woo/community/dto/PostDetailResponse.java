@@ -22,6 +22,10 @@ public class PostDetailResponse {
     private Long authorId;
 
     private String author;
+
+    @JsonProperty("author_profile_image")
+    private String authorProfileImage;
+
     private String content;
 
     @JsonProperty("content_image")

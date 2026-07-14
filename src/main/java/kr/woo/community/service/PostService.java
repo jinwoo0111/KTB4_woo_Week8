@@ -115,6 +115,7 @@ public class PostService {
                     comment.getId(),
                     comment.getAuthor().getId(),
                     comment.getAuthor().getNickname(),
+                    comment.getAuthor().getProfileImage(),
                     comment.getCreatedAt().format(FORMATTER),
                     comment.getContent()
             ));
@@ -132,6 +133,7 @@ public class PostService {
                 post.getCreatedAt().format(FORMATTER),
                 post.getAuthor().getId(),
                 post.getAuthor().getNickname(),
+                post.getAuthor().getProfileImage(),
                 post.getContent(),
                 post.getContentImage(),
                 post.getLikeCount(),
