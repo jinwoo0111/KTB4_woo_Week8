@@ -18,6 +18,9 @@ public class CommentUpdateResponse {
     @JsonProperty("author_nickname")
     private String authorNickname;
 
+    @JsonProperty("author_profile_image")
+    private String authorProfileImage;
+
     @JsonProperty("created_at")
     private String createdAt;
 

@@ -72,6 +72,7 @@ public class CommentService {
                 comment.getId(),
                 comment.getAuthor().getId(),
                 comment.getAuthor().getNickname(),
+                comment.getAuthor().getProfileImage(),
                 comment.getCreatedAt().format(FORMATTER),
                 comment.getContent()
         );
@@ -132,6 +133,7 @@ public class CommentService {
                 comment.getId(),
                 comment.getAuthor().getId(),
                 comment.getAuthor().getNickname(),
+                comment.getAuthor().getProfileImage(),
                 comment.getCreatedAt().format(FORMATTER),
                 comment.getContent()
         );
