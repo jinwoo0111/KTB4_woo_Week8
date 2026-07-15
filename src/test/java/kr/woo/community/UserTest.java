@@ -12,7 +12,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
+import static org.mockito.ArgumentMatchers.anyLong;
 
 import java.util.Optional;
 
@@ -103,6 +104,23 @@ public class UserTest {
 
         assertEquals("new닉네임", user.getNickname());
         assertEquals("newProfileImage", user.getProfileImage());
+    }
+
+    @Test
+    @DisplayName("회원 정보 수정 실패 - 본인이 아닌 경우 AccessDeniedException")
+    void updateUserFailWhenNotOwner() {
+        Long userId = 1L;
+        Long loginUserId = 2L;
+
+        UserUpdateRequest request = new UserUpdateRequest(
+                "new닉네임",
+                "newProfileImage"
+        );
+
+        assertThrows(AccessDeniedException.class, ()->{
+            userService.updateUser(userId, loginUserId, request);
+        });
+        verify(userRepository, never()).findById(anyLong());
     }
 
     @Test
