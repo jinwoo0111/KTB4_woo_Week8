@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.access.AccessDeniedException;
 import static org.mockito.ArgumentMatchers.anyLong;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
 
@@ -76,7 +77,13 @@ public class UserTest {
 
         userService.signup(request);
 
-        verify(userRepository, times(1)).save(any(User.class));
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+
+        verify(userRepository, times(1)).save(userCaptor.capture());
+
+        User savedUser = userCaptor.getValue();
+
+        assertEquals("encodedPassword", savedUser.getPassword());
     }
 
     @Test
