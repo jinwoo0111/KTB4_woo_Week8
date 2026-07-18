@@ -36,7 +36,7 @@ public class UserTest {
 
     @Test
     @DisplayName("회원가입 시 이메일이 중복되면 예외가 발생해야한다")
-    void validateDulplicateEmailSuccess() {
+    void signupFailWhenEmailDuplicated() {
 
         UserSignupRequest request = new UserSignupRequest("test@test.com", "Test1234!", "Test계정", "profile_image");
         when(userRepository.existsByEmail(anyString())).thenReturn(true);
@@ -51,7 +51,7 @@ public class UserTest {
 
     @Test
     @DisplayName("회원가입 시 닉네임이 중복되면 예외가 발생해야한다")
-    void validateDulplicateNicknameSuccess() {
+    void signupFailWhenNicknameDuplicated() {
 
         UserSignupRequest request = new UserSignupRequest("test@test.com", "Test1234!", "Test계정입니다", "profile_image");
 
