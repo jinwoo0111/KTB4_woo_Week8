@@ -14,4 +14,7 @@ public class PostUpdateRequest {
 
     @JsonProperty("content_image")
     private String contentImage;
+
+    @JsonProperty("remove_content_image")
+    private boolean removeContentImage;
 }

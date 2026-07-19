@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
@@ -139,6 +141,27 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiResponse<>("invalid_request", errors));
+    }
+
+    // 필수 multipart 파일이 누락된 경우 공통 API 형식으로 400 응답 생성
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleMissingRequestPartException(
+            MissingServletRequestPartException e
+    ) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(e.getRequestPartName(), "required");
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>("invalid_request", errors));
+    }
+
+    // multipart 요청이 설정된 최대 크기를 초과한 경우 400 응답 생성
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>("image_file_too_large", null));
     }
 
     // 요청 본문 JSON 형식이 잘못되었을 때 400 응답 생성

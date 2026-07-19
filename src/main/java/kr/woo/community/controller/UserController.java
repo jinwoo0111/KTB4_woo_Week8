@@ -117,12 +117,28 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    // GET /users/me - 현재 로그인한 회원정보 조회
+    @GetMapping("/users/me")
+    public ResponseEntity<ApiResponse<UserInfoResponse>> getCurrentUser(
+            @AuthenticationPrincipal CustomUserDetails loginUser
+    ) {
+        UserInfoResponse userInfoResponse = userService.getCurrentUser(loginUser.getId());
+
+        ApiResponse<UserInfoResponse> response = new ApiResponse<>(
+                "user_get_success",
+                userInfoResponse
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
     // GET /users/{userId} - 회원정보 조회
     @GetMapping("/users/{userId}")
     public ResponseEntity<ApiResponse<UserInfoResponse>> getUser(
-            @PathVariable Long userId
+            @PathVariable Long userId,
+            @AuthenticationPrincipal CustomUserDetails loginUser
     ) {
-        UserInfoResponse userInfoResponse = userService.getUser(userId);
+        UserInfoResponse userInfoResponse = userService.getUser(userId, loginUser.getId());
 
         ApiResponse<UserInfoResponse> response = new ApiResponse<>(
                 "user_get_success",

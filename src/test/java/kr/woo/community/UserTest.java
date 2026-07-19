@@ -7,6 +7,7 @@ import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.service.UserService;
+import kr.woo.community.service.FileStorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ public class UserTest {
 
     @Mock
     private BCryptPasswordEncoder passwordEncoder;
+
+    @Mock
+    private FileStorageService fileStorageService;
 
     @InjectMocks
     private UserService userService;
@@ -213,6 +217,7 @@ public class UserTest {
         userService.updateUser(userId, loginUserId, request);
         assertEquals("old닉네임", user.getNickname());
         assertEquals("newProfileImage", user.getProfileImage());
+        verify(fileStorageService).deleteImageAfterCommit("oldProfileImage");
     }
 
     @Test
@@ -237,6 +242,7 @@ public class UserTest {
         userService.updateUser(userId, loginUserId, request);
         assertEquals("new닉네임", user.getNickname());
         assertEquals("oldProfileImage", user.getProfileImage());
+        verify(fileStorageService, never()).deleteImageAfterCommit(anyString());
     }
 
     @Test
@@ -291,6 +297,89 @@ public class UserTest {
         assertThrows(UserNotFoundException.class, ()-> {
             userService.updatePassword(userId, loginUserId,request);
         });
+    }
+
+    @Test
+    @DisplayName("현재 로그인한 회원정보 조회 성공")
+    void getCurrentUserSuccess() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "password",
+                "nickname",
+                "profileImage"
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        UserInfoResponse response = userService.getCurrentUser(userId);
+
+        assertEquals("test@test.com", response.getEmail());
+        assertEquals("nickname", response.getNickname());
+        assertEquals("profileImage", response.getProfileImage());
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 회원정보 조회는 거부한다")
+    void getUserFailWhenNotOwner() {
+        Long userId = 1L;
+        Long loginUserId = 2L;
+
+        assertThrows(
+                AccessDeniedException.class,
+                () -> userService.getUser(userId, loginUserId)
+        );
+
+        verify(userRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("프로필 이미지를 명시적으로 제거하면 null로 변경하고 기존 파일을 삭제한다")
+    void updateUserRemovesProfileImage() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "password",
+                "nickname",
+                "/uploads/profile/old.png"
+        );
+        UserUpdateRequest request = new UserUpdateRequest(null, null, true);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        UserUpdateResponse response = userService.updateUser(userId, userId, request);
+
+        assertNull(user.getProfileImage());
+        assertNull(response.getProfileImage());
+        verify(fileStorageService).deleteImageAfterCommit("/uploads/profile/old.png");
+    }
+
+    @Test
+    @DisplayName("프로필 이미지 교체와 제거를 동시에 요청하면 400 예외가 발생한다")
+    void updateUserFailsWhenProfileImageRequestConflicts() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "password",
+                "nickname",
+                "/uploads/profile/old.png"
+        );
+        UserUpdateRequest request = new UserUpdateRequest(
+                null,
+                "/uploads/profile/new.png",
+                true
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.updateUser(userId, userId, request)
+        );
+
+        assertEquals("profile_image_update_conflict", exception.getMessage());
+        assertEquals("/uploads/profile/old.png", user.getProfileImage());
+        verify(fileStorageService, never()).deleteImageAfterCommit(anyString());
     }
 
     @Test

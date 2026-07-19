@@ -9,6 +9,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -51,5 +55,32 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals("title_blank", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("최대 업로드 크기를 초과하면 400 응답을 반환한다")
+    void handleMaxUploadSizeExceededException() {
+        ResponseEntity<ApiResponse<Void>> response =
+                exceptionHandler.handleMaxUploadSizeExceededException(
+                        new MaxUploadSizeExceededException(10L * 1024 * 1024)
+                );
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("image_file_too_large", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("필수 multipart 파일이 누락되면 공통 형식의 400 응답을 반환한다")
+    void handleMissingRequestPartException() {
+        ResponseEntity<ApiResponse<Map<String, String>>> response =
+                exceptionHandler.handleMissingRequestPartException(
+                        new MissingServletRequestPartException("file")
+                );
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("invalid_request", response.getBody().getMessage());
+        assertEquals("required", response.getBody().getData().get("file"));
     }
 }

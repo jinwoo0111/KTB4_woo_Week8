@@ -15,4 +15,13 @@ public class UserUpdateRequest {
 
     @JsonProperty("profile_image")
     private String profileImage;
+
+    @JsonProperty("remove_profile_image")
+    private boolean removeProfileImage;
+
+    public UserUpdateRequest(String nickname, String profileImage) {
+        this.nickname = nickname;
+        this.profileImage = profileImage;
+        this.removeProfileImage = false;
+    }
 }

@@ -34,6 +34,7 @@ public class PostService {
     private final UserRepository userRepository;
     private final CommentRepository commentRepository;
     private final PostLikeRepository postLikeRepository;
+    private final FileStorageService fileStorageService;
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -156,9 +157,14 @@ public class PostService {
         if(author.isDeleted()) {
             throw new UserNotFoundException();
         }
+        String contentImage = request.getContentImage();
+        if (contentImage != null && contentImage.isBlank()) {
+            contentImage = null;
+        }
+
         Post post = new Post(request.getTitle(),
                 request.getContent(),
-                request.getContentImage(),
+                contentImage,
                 author
         );
 
@@ -197,9 +203,7 @@ public class PostService {
             post.changeContent(request.getContent());
         }
 
-        if(request.getContentImage() != null) {
-            post.changeContentImage(request.getContentImage());
-        }
+        updateContentImage(post, request);
 
         return new PostUpdateResponse(
                 post.getId(),
@@ -207,6 +211,29 @@ public class PostService {
                 post.getContent(),
                 post.getContentImage()
         );
+    }
+
+    private void updateContentImage(Post post, PostUpdateRequest request) {
+        String newImagePath = request.getContentImage();
+        boolean legacyRemoveRequest = newImagePath != null && newImagePath.isBlank();
+        boolean removeRequested = request.isRemoveContentImage() || legacyRemoveRequest;
+
+        if (request.isRemoveContentImage() && newImagePath != null && !newImagePath.isBlank()) {
+            throw new InvalidRequestException("content_image_update_conflict");
+        }
+
+        String oldImagePath = post.getContentImage();
+
+        if (removeRequested) {
+            post.changeContentImage(null);
+            fileStorageService.deleteImageAfterCommit(oldImagePath);
+            return;
+        }
+
+        if (newImagePath != null && !newImagePath.equals(oldImagePath)) {
+            post.changeContentImage(newImagePath);
+            fileStorageService.deleteImageAfterCommit(oldImagePath);
+        }
     }
 
     // 게시글 삭제

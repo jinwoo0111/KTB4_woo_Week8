@@ -141,15 +141,36 @@ public class UserService {
             }
             user.changeNickname(request.getNickname());
         }
-        if(request.getProfileImage()!=null) {
-            user.changeProfileImage(request.getProfileImage());
-        }
+        updateProfileImage(user, request);
         return new UserUpdateResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getNickname(),
                 user.getProfileImage()
         );
+    }
+
+    private void updateProfileImage(User user, UserUpdateRequest request) {
+        String newImagePath = request.getProfileImage();
+        boolean legacyRemoveRequest = newImagePath != null && newImagePath.isBlank();
+        boolean removeRequested = request.isRemoveProfileImage() || legacyRemoveRequest;
+
+        if (request.isRemoveProfileImage() && newImagePath != null && !newImagePath.isBlank()) {
+            throw new InvalidRequestException("profile_image_update_conflict");
+        }
+
+        String oldImagePath = user.getProfileImage();
+
+        if (removeRequested) {
+            user.changeProfileImage(null);
+            fileStorageService.deleteImageAfterCommit(oldImagePath);
+            return;
+        }
+
+        if (newImagePath != null && !newImagePath.equals(oldImagePath)) {
+            user.changeProfileImage(newImagePath);
+            fileStorageService.deleteImageAfterCommit(oldImagePath);
+        }
     }
 
     @Transactional
@@ -176,9 +197,19 @@ public class UserService {
         user.softDelete();
     }
 
-    public UserInfoResponse getUser(Long userId) {
-        User user = findById(userId);
+    public UserInfoResponse getCurrentUser(Long loginUserId) {
+        return createUserInfoResponse(findById(loginUserId));
+    }
 
+    public UserInfoResponse getUser(Long userId, Long loginUserId) {
+        if (!userId.equals(loginUserId)) {
+            throw new AccessDeniedException("본인만 회원정보를 조회할 수 있습니다.");
+        }
+
+        return createUserInfoResponse(findById(userId));
+    }
+
+    private UserInfoResponse createUserInfoResponse(User user) {
         return new UserInfoResponse(
                 user.getId(),
                 user.getEmail(),
