@@ -6,8 +6,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.security.access.AccessDeniedException;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +83,15 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>(e.getMessage(), null));
     }
 
+    // 서비스 계층에서 요청 값이 유효하지 않다고 판단한 경우 400 응답 생성
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidRequestException(
+            InvalidRequestException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>(e.getMessage(), null));
+    }
+
     // @Valid 검증 실패 시 400 응답 생성
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
@@ -91,6 +102,40 @@ public class GlobalExceptionHandler {
         for(FieldError fieldError : e.getBindingResult().getFieldErrors()) {
             errors.put(fieldError.getField(), fieldError.getDefaultMessage());
         }
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>("invalid_request", errors));
+    }
+
+    // @RequestParam 같은 컨트롤러 메서드 매개변수 검증 실패 시 400 응답 생성
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleMethodValidationException(
+            HandlerMethodValidationException e
+    ) {
+        Map<String, String> errors = new LinkedHashMap<>();
+
+        e.getParameterValidationResults().forEach(result -> {
+            String parameterName = result.getMethodParameter().getParameterName();
+            if (parameterName == null) {
+                parameterName = "request";
+            }
+            String finalParameterName = parameterName;
+            result.getResolvableErrors().stream().findFirst().ifPresent(error ->
+                    errors.put(finalParameterName, error.getDefaultMessage())
+            );
+        });
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>("invalid_request", errors));
+    }
+
+    // 필수 RequestParam이 누락된 경우에도 공통 API 형식으로 400 응답 생성
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleMissingRequestParameterException(
+            MissingServletRequestParameterException e
+    ) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        errors.put(e.getParameterName(), "required");
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiResponse<>("invalid_request", errors));

@@ -7,6 +7,7 @@ import kr.woo.community.entity.User;
 import kr.woo.community.entity.Comment;
 import kr.woo.community.exception.InvalidPaginationParameterException;
 import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.UserNotFoundException;
@@ -184,14 +185,14 @@ public class PostService {
 
         if(request.getTitle() != null) {
             if(request.getTitle().isBlank()) {
-                throw new IllegalArgumentException("title_blank");
+                throw new InvalidRequestException("title_blank");
             }
             post.changeTitle(request.getTitle());
         }
 
         if(request.getContent() != null) {
             if(request.getContent().isBlank()) {
-                throw new IllegalArgumentException("content_blank");
+                throw new InvalidRequestException("content_blank");
             }
             post.changeContent(request.getContent());
         }

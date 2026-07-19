@@ -1,5 +1,6 @@
 package kr.woo.community.service;
 
+import kr.woo.community.exception.InvalidRequestException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,13 +18,11 @@ public class FileStorageService {
             Paths.get("uploads");
 
     public String saveImage(
-            MultipartFile file,
+        MultipartFile file,
             String category
     ) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "이미지 파일이 없습니다."
-            );
+            throw new InvalidRequestException("image_file_empty");
         }
 
         try {
@@ -61,10 +60,7 @@ public class FileStorageService {
                     + "/"
                     + storedFileName;
         } catch(IOException e) {
-            throw new IllegalArgumentException(
-                    "이미지 저장에 실패했습니다.",
-                    e
-            );
+            throw new IllegalStateException("image_save_failed", e);
         }
     }
 }

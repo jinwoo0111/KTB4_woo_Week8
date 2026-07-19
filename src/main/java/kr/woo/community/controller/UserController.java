@@ -1,6 +1,8 @@
 package kr.woo.community.controller;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import kr.woo.community.common.ApiResponse;
 import kr.woo.community.dto.*;
 import kr.woo.community.service.UserService;
@@ -24,9 +26,9 @@ public class UserController {
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
     )
     public ResponseEntity<ApiResponse<UserSignupResponse>> signupWithImage(
-            @RequestParam("email") String email,
-            @RequestParam("password") String password,
-            @RequestParam("nickname") String nickname,
+            @RequestParam("email") @NotBlank @Email String email,
+            @RequestParam("password") @NotBlank String password,
+            @RequestParam("nickname") @NotBlank String nickname,
             @RequestPart(value = "profile_image", required = false)
             MultipartFile profileImage
     ) {
@@ -130,4 +132,3 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 }
-

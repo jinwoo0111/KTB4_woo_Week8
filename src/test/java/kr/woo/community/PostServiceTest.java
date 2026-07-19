@@ -2,7 +2,9 @@ package kr.woo.community;
 
 import kr.woo.community.entity.Post;
 import kr.woo.community.entity.User;
+import kr.woo.community.dto.PostUpdateRequest;
 import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.repository.CommentRepository;
 import kr.woo.community.repository.PostLikeRepository;
@@ -21,6 +23,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -82,5 +85,51 @@ class PostServiceTest {
         );
 
         assertEquals("post_like_not_found", exception.getMessage());
+    }
+
+    @Test
+    @DisplayName("게시글 수정 제목이 공백이면 유효하지 않은 요청 예외가 발생한다")
+    void updatePostFailWhenTitleIsBlank() {
+        Long postId = 1L;
+        Long userId = 2L;
+        Post post = mock(Post.class);
+        User author = mock(User.class);
+        PostUpdateRequest request = mock(PostUpdateRequest.class);
+
+        when(postRepository.findById(postId)).thenReturn(Optional.of(post));
+        when(post.getAuthor()).thenReturn(author);
+        when(author.getId()).thenReturn(userId);
+        when(request.getTitle()).thenReturn("   ");
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> postService.updatePost(postId, userId, request)
+        );
+
+        assertEquals("title_blank", exception.getMessage());
+        verify(post, never()).changeTitle(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    @DisplayName("게시글 수정 내용이 공백이면 유효하지 않은 요청 예외가 발생한다")
+    void updatePostFailWhenContentIsBlank() {
+        Long postId = 1L;
+        Long userId = 2L;
+        Post post = mock(Post.class);
+        User author = mock(User.class);
+        PostUpdateRequest request = mock(PostUpdateRequest.class);
+
+        when(postRepository.findById(postId)).thenReturn(Optional.of(post));
+        when(post.getAuthor()).thenReturn(author);
+        when(author.getId()).thenReturn(userId);
+        when(request.getContent()).thenReturn("\t");
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> postService.updatePost(postId, userId, request)
+        );
+
+        assertEquals("content_blank", exception.getMessage());
+        verify(post, never()).changeContent(org.mockito.ArgumentMatchers.anyString());
     }
 }

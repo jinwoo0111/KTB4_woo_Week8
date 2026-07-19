@@ -3,6 +3,7 @@ package kr.woo.community;
 import kr.woo.community.dto.*;
 import kr.woo.community.entity.User;
 import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.service.UserService;
@@ -165,6 +166,31 @@ public class UserTest {
     }
 
     @Test
+    @DisplayName("회원 정보 수정 실패 - 닉네임이 공백인 경우")
+    void updateUserFailWhenNicknameIsBlank() {
+        Long userId = 1L;
+        Long loginUserId = 1L;
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "oldProfileImage"
+        );
+        UserUpdateRequest request = new UserUpdateRequest("   ", null);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.updateUser(userId, loginUserId, request)
+        );
+
+        assertEquals("nickname_blank", exception.getMessage());
+        assertEquals("old닉네임", user.getNickname());
+        verify(userRepository, never()).existsByNicknameAndIdNot(anyString(), anyLong());
+    }
+
+    @Test
     @DisplayName("프로필 이미지만 수정하면 닉네임은 유지되고 프로필 이미지만 변경된다")
     void updateProfileImageSuccess() {
         Long userId = 1L;
@@ -297,4 +323,3 @@ public class UserTest {
         });
     }
 }
-

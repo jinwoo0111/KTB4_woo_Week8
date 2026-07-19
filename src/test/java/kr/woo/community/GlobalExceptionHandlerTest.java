@@ -3,6 +3,7 @@ package kr.woo.community;
 import kr.woo.community.common.ApiResponse;
 import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.GlobalExceptionHandler;
+import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,5 +39,17 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals("post_like_not_found", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 요청 예외는 400 상태 코드와 예외 메시지를 반환한다")
+    void handleInvalidRequestException() {
+        ResponseEntity<ApiResponse<Void>> response = exceptionHandler.handleInvalidRequestException(
+                new InvalidRequestException("title_blank")
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("title_blank", response.getBody().getMessage());
     }
 }

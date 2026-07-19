@@ -2,6 +2,7 @@ package kr.woo.community.service;
 
 import kr.woo.community.dto.*;
 import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.entity.User;
@@ -132,6 +133,9 @@ public class UserService {
         User user = findById(userId);
 
         if(request.getNickname()!=null) {
+            if (request.getNickname().isBlank()) {
+                throw new InvalidRequestException("nickname_blank");
+            }
             if (userRepository.existsByNicknameAndIdNot(request.getNickname(), userId)) {
                 throw new ConflictException("nickname_already_exists");
             }
