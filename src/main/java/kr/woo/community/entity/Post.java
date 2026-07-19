@@ -89,11 +89,6 @@ public class Post {
         }
     }
 
-    // 조회수 증가
-    public void increaseViewCount() {
-        this.viewCount++;
-    }
-
     // 제목 수정
     public void changeTitle(String title) {
         this.title = title;

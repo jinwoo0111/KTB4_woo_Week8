@@ -48,6 +48,20 @@ public class PostController {
         return ResponseEntity.ok(response);
     }
 
+    // POST /posts/{postId}/views - 게시글 상세조회와 분리된 조회수 증가
+    @PostMapping("/posts/{postId}/views")
+    public ResponseEntity<ApiResponse<PostViewResponse>> increaseViewCount(
+            @PathVariable Long postId
+    ) {
+        PostViewResponse postViewResponse = postService.increaseViewCount(postId);
+        ApiResponse<PostViewResponse> response = new ApiResponse<>(
+                "post_view_increase_success",
+                postViewResponse
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
     // Post/posts - 게시글 생성
     // 게시글 생성 요청을 받아 새 게시글 저장하고 201 Created 응답 반환
     @PostMapping("/posts")

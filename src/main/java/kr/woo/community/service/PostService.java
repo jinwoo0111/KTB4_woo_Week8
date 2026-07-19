@@ -105,11 +105,8 @@ public class PostService {
     }
 
     // 게시글 상세 조회
-    @Transactional
     public PostDetailResponse getPostDetail(Long postId, Long loginUserId){
         Post post = findById(postId);
-
-        post.increaseViewCount();
 
         List<Comment> comments = commentRepository.findByPost_IdAndDeletedAtIsNullOrderByIdAsc(postId);
         List<CommentResponse> commentResponses = new ArrayList<>();
@@ -146,6 +143,19 @@ public class PostService {
                 post.getViewCount(),
                 commentResponses
         );
+    }
+
+    // 게시글 상세 조회와 분리된 조회수 증가
+    @Transactional
+    public PostViewResponse increaseViewCount(Long postId) {
+        int updatedRowCount = postRepository.increaseViewCount(postId);
+
+        if (updatedRowCount == 0) {
+            throw new PostNotFoundException();
+        }
+
+        Post post = findById(postId);
+        return new PostViewResponse(post.getViewCount());
     }
 
     // 게시글 추가

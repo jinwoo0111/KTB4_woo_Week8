@@ -96,6 +96,7 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/users/signup", "/users/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/posts", "/posts/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/posts/*/views").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers("/admin/**").hasAuthority("ADMIN")
                         .anyRequest().authenticated())

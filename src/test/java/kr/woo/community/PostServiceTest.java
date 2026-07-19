@@ -5,6 +5,7 @@ import kr.woo.community.entity.User;
 import kr.woo.community.dto.PostUpdateRequest;
 import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.InvalidRequestException;
+import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.repository.CommentRepository;
 import kr.woo.community.repository.PostLikeRepository;
@@ -21,6 +22,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -263,5 +266,53 @@ class PostServiceTest {
         ArgumentCaptor<Post> postCaptor = ArgumentCaptor.forClass(Post.class);
         verify(postRepository).save(postCaptor.capture());
         assertNull(postCaptor.getValue().getContentImage());
+    }
+
+    @Test
+    @DisplayName("게시글 상세 조회는 조회수를 증가시키지 않는다")
+    void getPostDetailDoesNotIncreaseViewCount() {
+        Long postId = 1L;
+        Post post = mock(Post.class);
+        User author = mock(User.class);
+
+        when(postRepository.findById(postId)).thenReturn(Optional.of(post));
+        when(post.getAuthor()).thenReturn(author);
+        when(post.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(commentRepository.findByPost_IdAndDeletedAtIsNullOrderByIdAsc(postId))
+                .thenReturn(List.of());
+
+        postService.getPostDetail(postId, null);
+
+        verify(postRepository, never()).increaseViewCount(postId);
+    }
+
+    @Test
+    @DisplayName("게시글 조회수를 원자적으로 증가시키고 증가된 값을 반환한다")
+    void increaseViewCountSuccess() {
+        Long postId = 1L;
+        Post post = mock(Post.class);
+
+        when(postRepository.increaseViewCount(postId)).thenReturn(1);
+        when(postRepository.findById(postId)).thenReturn(Optional.of(post));
+        when(post.getViewCount()).thenReturn(11);
+
+        kr.woo.community.dto.PostViewResponse response =
+                postService.increaseViewCount(postId);
+
+        assertEquals(11, response.getViewCount());
+    }
+
+    @Test
+    @DisplayName("존재하지 않거나 삭제된 게시글의 조회수는 증가시키지 않는다")
+    void increaseViewCountFailsWhenPostDoesNotExist() {
+        Long postId = 1L;
+        when(postRepository.increaseViewCount(postId)).thenReturn(0);
+
+        assertThrows(
+                PostNotFoundException.class,
+                () -> postService.increaseViewCount(postId)
+        );
+
+        verify(postRepository, never()).findById(postId);
     }
 }
