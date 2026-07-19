@@ -2,6 +2,7 @@ package kr.woo.community;
 
 import kr.woo.community.dto.*;
 import kr.woo.community.entity.User;
+import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.service.UserService;
@@ -41,10 +42,11 @@ public class UserTest {
         UserSignupRequest request = new UserSignupRequest("test@test.com", "Test1234!", "Test계정", "profile_image");
         when(userRepository.existsByEmail(anyString())).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> {
+        ConflictException exception = assertThrows(ConflictException.class, () -> {
             userService.signup(request);
         });
 
+        assertEquals("email_already_exists", exception.getMessage());
         verify(userRepository, times(1)).existsByEmail(anyString());
         verify(userRepository, never()).save(any(User.class));
     }
@@ -58,10 +60,11 @@ public class UserTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(userRepository.existsByNickname(anyString())).thenReturn(true);
 
-        assertThrows(IllegalArgumentException.class, () -> {
+        ConflictException exception = assertThrows(ConflictException.class, () -> {
             userService.signup(request);
         });
 
+        assertEquals("nickname_already_exists", exception.getMessage());
         verify(userRepository, times(1)).existsByNickname(anyString());
         verify(userRepository, never()).save(any(User.class));
     }
@@ -128,6 +131,37 @@ public class UserTest {
             userService.updateUser(userId, loginUserId, request);
         });
         verify(userRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    @DisplayName("회원 정보 수정 실패 - 다른 사용자가 사용 중인 닉네임")
+    void updateUserFailWhenNicknameDuplicated() {
+        Long userId = 1L;
+        Long loginUserId = 1L;
+
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "oldProfileImage"
+        );
+
+        UserUpdateRequest request = new UserUpdateRequest(
+                "duplicated닉네임",
+                null
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.existsByNicknameAndIdNot("duplicated닉네임", userId))
+                .thenReturn(true);
+
+        ConflictException exception = assertThrows(
+                ConflictException.class,
+                () -> userService.updateUser(userId, loginUserId, request)
+        );
+
+        assertEquals("nickname_already_exists", exception.getMessage());
+        assertEquals("old닉네임", user.getNickname());
     }
 
     @Test
@@ -263,5 +297,4 @@ public class UserTest {
         });
     }
 }
-
 

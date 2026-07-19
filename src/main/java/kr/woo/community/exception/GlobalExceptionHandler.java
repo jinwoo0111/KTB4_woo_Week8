@@ -65,6 +65,22 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>(e.getMessage(), null));
     }
 
+    // 이미 사용 중인 값이나 이미 생성된 리소스와 충돌할 때 409 응답 생성
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConflictException(ConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiResponse<>(e.getMessage(), null));
+    }
+
+    // 삭제하려는 게시글 좋아요가 존재하지 않을 때 404 응답 생성
+    @ExceptionHandler(PostLikeNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePostLikeNotFoundException(
+            PostLikeNotFoundException e
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiResponse<>(e.getMessage(), null));
+    }
+
     // @Valid 검증 실패 시 400 응답 생성
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(

@@ -1,6 +1,7 @@
 package kr.woo.community.service;
 
 import kr.woo.community.dto.*;
+import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.entity.User;
@@ -92,13 +93,13 @@ public class UserService {
 
     private void validateDuplicateEmail(String email) {
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("이미 사용중인 이메일입니다.");
+            throw new ConflictException("email_already_exists");
         }
     }
 
     private void validateDuplicateNickname(String nickname) {
         if (userRepository.existsByNickname(nickname)) {
-            throw new IllegalArgumentException("이미 사용중인 닉네임입니다");
+            throw new ConflictException("nickname_already_exists");
         }
     }
 
@@ -131,6 +132,9 @@ public class UserService {
         User user = findById(userId);
 
         if(request.getNickname()!=null) {
+            if (userRepository.existsByNicknameAndIdNot(request.getNickname(), userId)) {
+                throw new ConflictException("nickname_already_exists");
+            }
             user.changeNickname(request.getNickname());
         }
         if(request.getProfileImage()!=null) {

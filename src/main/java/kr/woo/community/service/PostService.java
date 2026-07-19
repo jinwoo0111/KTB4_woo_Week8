@@ -6,6 +6,8 @@ import kr.woo.community.entity.PostLike;
 import kr.woo.community.entity.User;
 import kr.woo.community.entity.Comment;
 import kr.woo.community.exception.InvalidPaginationParameterException;
+import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.PostLikeRepository;
@@ -236,7 +238,7 @@ public class PostService {
         }
 
         if(postLikeRepository.existsByPost_IdAndUser_Id(postId, userId)) {
-            throw new IllegalArgumentException("post_like_not_found");
+            throw new ConflictException("post_like_already_exists");
         }
 
         PostLike postLike = new PostLike(post, user);
@@ -257,7 +259,7 @@ public class PostService {
         }
 
         PostLike postLike = postLikeRepository.findByPost_IdAndUser_Id(postId, userId)
-                        .orElseThrow(() -> new IllegalArgumentException("post_like_not_found"));
+                        .orElseThrow(PostLikeNotFoundException::new);
         postLikeRepository.delete(postLike);
 
         post.decreaseLikeCount();
