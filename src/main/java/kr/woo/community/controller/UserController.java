@@ -68,13 +68,46 @@ public class UserController {
     */
 
     // PATCH /users/{userId} - 회원정보 수정
-    @PatchMapping("/users/{userId}")
+    @PatchMapping(
+            value = "/users/{userId}",
+            consumes = MediaType.APPLICATION_JSON_VALUE
+    )
     public ResponseEntity<ApiResponse<UserUpdateResponse>> updateUser(
             @PathVariable Long userId,
             @AuthenticationPrincipal CustomUserDetails loginUser,
             @Valid @RequestBody UserUpdateRequest request
     ) {
         UserUpdateResponse updateResponse = userService.updateUser(userId, loginUser.getId(), request);
+
+        ApiResponse<UserUpdateResponse> response = new ApiResponse<>(
+                "user_update_success",
+                updateResponse
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    // PATCH /users/{userId} - 프로필 이미지를 포함한 회원정보 수정
+    @PatchMapping(
+            value = "/users/{userId}",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<UserUpdateResponse>> updateUserWithImage(
+            @PathVariable Long userId,
+            @AuthenticationPrincipal CustomUserDetails loginUser,
+            @RequestParam(value = "nickname", required = false) String nickname,
+            @RequestParam(value = "remove_profile_image", defaultValue = "false")
+            boolean removeProfileImage,
+            @RequestPart(value = "profile_image", required = false)
+            MultipartFile profileImage
+    ) {
+        UserUpdateResponse updateResponse = userService.updateUser(
+                userId,
+                loginUser.getId(),
+                nickname,
+                profileImage,
+                removeProfileImage
+        );
 
         ApiResponse<UserUpdateResponse> response = new ApiResponse<>(
                 "user_update_success",

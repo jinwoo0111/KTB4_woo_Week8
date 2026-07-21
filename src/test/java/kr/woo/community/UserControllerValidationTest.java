@@ -2,6 +2,7 @@ package kr.woo.community;
 
 import kr.woo.community.controller.UserController;
 import kr.woo.community.dto.UserInfoResponse;
+import kr.woo.community.dto.UserUpdateResponse;
 import kr.woo.community.entity.Role;
 import kr.woo.community.security.config.SecurityConfig;
 import kr.woo.community.security.jwt.JWTUtil;
@@ -15,7 +16,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -114,5 +119,55 @@ class UserControllerValidationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("unauthorized"))
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    @DisplayName("로그인 사용자는 multipart 요청으로 자신의 회원정보와 프로필 이미지를 수정할 수 있다")
+    void updateUserWithImageSuccess() throws Exception {
+        Long userId = 1L;
+        CustomUserDetails userDetails = new CustomUserDetails(
+                userId,
+                "test@test.com",
+                Role.USER
+        );
+        UsernamePasswordAuthenticationToken authenticationToken =
+                new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                );
+        MockMultipartFile profileImage = new MockMultipartFile(
+                "profile_image",
+                "profile.png",
+                "image/png",
+                new byte[]{1}
+        );
+
+        when(userService.updateUser(
+                eq(userId),
+                eq(userId),
+                eq("new닉네임"),
+                any(MultipartFile.class),
+                eq(false)
+        )).thenReturn(new UserUpdateResponse(
+                userId,
+                "test@test.com",
+                "new닉네임",
+                "/uploads/profile/new.png"
+        ));
+
+        mockMvc.perform(multipart("/users/{userId}", userId)
+                        .file(profileImage)
+                        .param("nickname", "new닉네임")
+                        .with(request -> {
+                            request.setMethod("PATCH");
+                            return request;
+                        })
+                        .with(authentication(authenticationToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("user_update_success"))
+                .andExpect(jsonPath("$.data.nickname").value("new닉네임"))
+                .andExpect(jsonPath("$.data.profile_image")
+                        .value("/uploads/profile/new.png"));
     }
 }

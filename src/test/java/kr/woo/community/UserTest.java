@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.mock.web.MockMultipartFile;
 import static org.mockito.ArgumentMatchers.anyLong;
 import org.mockito.ArgumentCaptor;
 
@@ -71,6 +72,46 @@ public class UserTest {
 
         assertEquals("nickname_already_exists", exception.getMessage());
         verify(userRepository, times(1)).existsByNickname(anyString());
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("회원가입 시 닉네임에 공백이 포함되면 예외가 발생해야 한다")
+    void signupFailWhenNicknameContainsWhitespace() {
+        UserSignupRequest request = new UserSignupRequest(
+                "test@test.com",
+                "Test1234!",
+                "공백 닉네임",
+                null
+        );
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.signup(request)
+        );
+
+        assertEquals("nickname_whitespace_not_allowed", exception.getMessage());
+        verify(userRepository, never()).existsByEmail(anyString());
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("회원가입 시 닉네임이 10자를 초과하면 예외가 발생해야 한다")
+    void signupFailWhenNicknameIsTooLong() {
+        UserSignupRequest request = new UserSignupRequest(
+                "test@test.com",
+                "Test1234!",
+                "열한글자닉네임입니다요",
+                null
+        );
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.signup(request)
+        );
+
+        assertEquals("nickname_too_long", exception.getMessage());
+        verify(userRepository, never()).existsByEmail(anyString());
         verify(userRepository, never()).save(any(User.class));
     }
 
@@ -152,12 +193,12 @@ public class UserTest {
         );
 
         UserUpdateRequest request = new UserUpdateRequest(
-                "duplicated닉네임",
+                "중복닉네임",
                 null
         );
 
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userRepository.existsByNicknameAndIdNot("duplicated닉네임", userId))
+        when(userRepository.existsByNicknameAndIdNot("중복닉네임", userId))
                 .thenReturn(true);
 
         ConflictException exception = assertThrows(
@@ -192,6 +233,123 @@ public class UserTest {
         assertEquals("nickname_blank", exception.getMessage());
         assertEquals("old닉네임", user.getNickname());
         verify(userRepository, never()).existsByNicknameAndIdNot(anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("회원 정보 수정 실패 - 닉네임에 공백이 포함된 경우")
+    void updateUserFailWhenNicknameContainsWhitespace() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "oldProfileImage"
+        );
+        UserUpdateRequest request = new UserUpdateRequest("new 닉네임", null);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.updateUser(userId, userId, request)
+        );
+
+        assertEquals("nickname_whitespace_not_allowed", exception.getMessage());
+        assertEquals("old닉네임", user.getNickname());
+        verify(userRepository, never()).existsByNicknameAndIdNot(anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("회원 정보 수정 실패 - 닉네임이 10자를 초과한 경우")
+    void updateUserFailWhenNicknameIsTooLong() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "oldProfileImage"
+        );
+        UserUpdateRequest request = new UserUpdateRequest("열한글자닉네임입니다요", null);
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.updateUser(userId, userId, request)
+        );
+
+        assertEquals("nickname_too_long", exception.getMessage());
+        assertEquals("old닉네임", user.getNickname());
+        verify(userRepository, never()).existsByNicknameAndIdNot(anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("multipart 회원정보 수정은 새 프로필 이미지를 저장하고 기존 이미지를 커밋 후 삭제한다")
+    void updateUserWithProfileImageSuccess() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "/uploads/profile/old.png"
+        );
+        MockMultipartFile profileImage = new MockMultipartFile(
+                "profile_image",
+                "new.png",
+                "image/png",
+                new byte[]{1}
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(fileStorageService.saveImage(profileImage, "profile"))
+                .thenReturn("/uploads/profile/new.png");
+
+        UserUpdateResponse response = userService.updateUser(
+                userId,
+                userId,
+                "new닉네임",
+                profileImage,
+                false
+        );
+
+        assertEquals("new닉네임", response.getNickname());
+        assertEquals("/uploads/profile/new.png", response.getProfileImage());
+        verify(fileStorageService).deleteImageAfterRollback("/uploads/profile/new.png");
+        verify(fileStorageService).deleteImageAfterCommit("/uploads/profile/old.png");
+    }
+
+    @Test
+    @DisplayName("multipart 회원정보 수정은 이미지 교체와 제거를 동시에 허용하지 않는다")
+    void updateUserWithProfileImageFailsWhenRemoveIsAlsoRequested() {
+        Long userId = 1L;
+        User user = new User(
+                "test@test.com",
+                "Test1234!",
+                "old닉네임",
+                "/uploads/profile/old.png"
+        );
+        MockMultipartFile profileImage = new MockMultipartFile(
+                "profile_image",
+                "new.png",
+                "image/png",
+                new byte[]{1}
+        );
+
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        InvalidRequestException exception = assertThrows(
+                InvalidRequestException.class,
+                () -> userService.updateUser(
+                        userId,
+                        userId,
+                        null,
+                        profileImage,
+                        true
+                )
+        );
+
+        assertEquals("profile_image_update_conflict", exception.getMessage());
+        verify(fileStorageService, never()).saveImage(any(), anyString());
     }
 
     @Test

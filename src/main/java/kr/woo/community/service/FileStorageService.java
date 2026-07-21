@@ -113,6 +113,28 @@ public class FileStorageService {
         deleteAction.run();
     }
 
+    public void deleteImageAfterRollback(String imagePath) {
+        if (imagePath == null || imagePath.isBlank()) {
+            return;
+        }
+
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        if (status != TransactionSynchronization.STATUS_COMMITTED) {
+                            deleteManagedImage(imagePath);
+                        }
+                    }
+                }
+        );
+    }
+
     private void deleteManagedImage(String imagePath) {
         if (!imagePath.startsWith("/uploads/")) {
             log.warn("관리 대상이 아닌 이미지 삭제 요청을 무시합니다: {}", imagePath);

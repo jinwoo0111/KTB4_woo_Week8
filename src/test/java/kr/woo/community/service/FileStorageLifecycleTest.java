@@ -137,4 +137,38 @@ class FileStorageLifecycleTest {
             TransactionSynchronizationManager.setActualTransactionActive(false);
         }
     }
+
+    @Test
+    @DisplayName("새 이미지는 트랜잭션 롤백 후 삭제한다")
+    void deleteNewImageAfterRollback() {
+        FileStorageService fileStorageService = new FileStorageService(tempDirectory);
+        byte[] pngHeader = new byte[]{
+                (byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A
+        };
+        MockMultipartFile image = new MockMultipartFile(
+                "file",
+                "image.png",
+                "image/png",
+                pngHeader
+        );
+        String imagePath = fileStorageService.saveImage(image, "profile");
+        Path storedFile = tempDirectory.resolve(imagePath.substring("/uploads/".length()));
+
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            fileStorageService.deleteImageAfterRollback(imagePath);
+            assertTrue(Files.exists(storedFile));
+
+            for (TransactionSynchronization synchronization
+                    : TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+            }
+
+            assertFalse(Files.exists(storedFile));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
 }

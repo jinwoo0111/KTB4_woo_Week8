@@ -18,6 +18,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Transactional(readOnly = true)
 public class UserService {
 
+    private static final int MAX_NICKNAME_LENGTH = 10;
+
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final FileStorageService fileStorageService;
@@ -39,6 +41,7 @@ public class UserService {
     @Transactional
     public UserSignupResponse signup(UserSignupRequest request) {
 
+        validateNickname(request.getNickname());
         validateDuplicateEmail(request.getEmail());
         validateDuplicateNickname(request.getNickname());
 
@@ -62,6 +65,7 @@ public class UserService {
             String nickname,
             MultipartFile profileImage
     ) {
+        validateNickname(nickname);
         validateDuplicateEmail(email);
         validateDuplicateNickname(nickname);
 
@@ -73,6 +77,7 @@ public class UserService {
                             profileImage,
                             "profile"
                     );
+            fileStorageService.deleteImageAfterRollback(profileImagePath);
         }
 
         String encodedPassword =
@@ -100,6 +105,32 @@ public class UserService {
 
     private void validateDuplicateNickname(String nickname) {
         if (userRepository.existsByNickname(nickname)) {
+            throw new ConflictException("nickname_already_exists");
+        }
+    }
+
+    private void validateNickname(String nickname) {
+        if (nickname == null || nickname.isBlank()) {
+            throw new InvalidRequestException("nickname_blank");
+        }
+
+        if (nickname.chars().anyMatch(Character::isWhitespace)) {
+            throw new InvalidRequestException("nickname_whitespace_not_allowed");
+        }
+
+        if (nickname.length() > MAX_NICKNAME_LENGTH) {
+            throw new InvalidRequestException("nickname_too_long");
+        }
+    }
+
+    private void validateNicknameForUpdate(String nickname, Long userId) {
+        if (nickname == null) {
+            return;
+        }
+
+        validateNickname(nickname);
+
+        if (userRepository.existsByNicknameAndIdNot(nickname, userId)) {
             throw new ConflictException("nickname_already_exists");
         }
     }
@@ -132,16 +163,66 @@ public class UserService {
 
         User user = findById(userId);
 
-        if(request.getNickname()!=null) {
-            if (request.getNickname().isBlank()) {
-                throw new InvalidRequestException("nickname_blank");
-            }
-            if (userRepository.existsByNicknameAndIdNot(request.getNickname(), userId)) {
-                throw new ConflictException("nickname_already_exists");
-            }
+        validateNicknameForUpdate(request.getNickname(), userId);
+
+        if(request.getNickname() != null) {
             user.changeNickname(request.getNickname());
         }
         updateProfileImage(user, request);
+        return createUserUpdateResponse(user);
+    }
+
+    @Transactional
+    public UserUpdateResponse updateUser(
+            Long userId,
+            Long loginUserId,
+            String nickname,
+            MultipartFile profileImage,
+            boolean removeProfileImage
+    ) {
+        if (!userId.equals(loginUserId)) {
+            throw new AccessDeniedException("본인만 회원정보를 수정할 수 있습니다.");
+        }
+
+        User user = findById(userId);
+        validateNicknameForUpdate(nickname, userId);
+
+        boolean hasNewProfileImage = profileImage != null && !profileImage.isEmpty();
+
+        if (hasNewProfileImage && removeProfileImage) {
+            throw new InvalidRequestException("profile_image_update_conflict");
+        }
+
+        if (nickname != null) {
+            user.changeNickname(nickname);
+        }
+
+        if (removeProfileImage) {
+            removeProfileImage(user);
+        } else if (hasNewProfileImage) {
+            replaceProfileImage(user, profileImage);
+        }
+
+        return createUserUpdateResponse(user);
+    }
+
+    private void replaceProfileImage(User user, MultipartFile profileImage) {
+        String oldImagePath = user.getProfileImage();
+        String newImagePath = fileStorageService.saveImage(profileImage, "profile");
+
+        fileStorageService.deleteImageAfterRollback(newImagePath);
+        user.changeProfileImage(newImagePath);
+        fileStorageService.deleteImageAfterCommit(oldImagePath);
+    }
+
+    private void removeProfileImage(User user) {
+        String oldImagePath = user.getProfileImage();
+
+        user.changeProfileImage(null);
+        fileStorageService.deleteImageAfterCommit(oldImagePath);
+    }
+
+    private UserUpdateResponse createUserUpdateResponse(User user) {
         return new UserUpdateResponse(
                 user.getId(),
                 user.getEmail(),
