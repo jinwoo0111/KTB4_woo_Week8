@@ -2,6 +2,8 @@ package kr.woo.community.service;
 
 import kr.woo.community.exception.InvalidRequestException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -30,8 +32,11 @@ public class FileStorageService {
 
     private final Path uploadRoot;
 
-    public FileStorageService() {
-        this(Paths.get("uploads"));
+    @Autowired
+    public FileStorageService(
+            @Value("${app.storage.upload-root:./uploads}") String uploadRoot
+    ) {
+        this(Paths.get(uploadRoot));
     }
 
     FileStorageService(Path uploadRoot) {

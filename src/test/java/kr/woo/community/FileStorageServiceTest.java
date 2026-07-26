@@ -11,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class FileStorageServiceTest {
 
-    private final FileStorageService fileStorageService = new FileStorageService();
+    private final FileStorageService fileStorageService =
+            new FileStorageService("./uploads");
 
     @Test
     @DisplayName("빈 이미지 파일을 업로드하면 유효하지 않은 요청 예외가 발생한다")
