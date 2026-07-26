@@ -88,6 +88,7 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/users/signup", "/users/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/posts", "/posts/*").permitAll()
