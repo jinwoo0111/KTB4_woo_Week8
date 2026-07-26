@@ -4,6 +4,7 @@ import kr.woo.community.security.filter.JWTFilter;
 import kr.woo.community.security.filter.LoginFilter;
 import kr.woo.community.security.jwt.JWTUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,16 +21,17 @@ import org.springframework.http.HttpMethod;
 import kr.woo.community.security.handler.CustomAccessDeniedHandler;
 import kr.woo.community.security.handler.CustomAuthenticationEntryPoint;
 
-import java.util.Collections;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableConfigurationProperties(CorsProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final AuthenticationConfiguration authenticationConfiguration;
     private final JWTUtil jwtUtil;
+    private final CorsProperties corsProperties;
 
     @Bean
     public AuthenticationManager authenticationManager() throws Exception {
@@ -47,14 +49,7 @@ public class SecurityConfig {
             CorsConfiguration configuration =
                     new CorsConfiguration();
 
-            configuration.setAllowedOrigins(List.of(
-                    "http://127.0.0.1:5500",
-                    "http://localhost:5500",
-                    "http://127.0.0.1:5501",
-                    "http://localhost:5501",
-                    "http://127.0.0.1:5173",
-                    "http://localhost:5173"
-            ));
+            configuration.setAllowedOrigins(corsProperties.allowedOrigins());
 
             configuration.setAllowedMethods(List.of(
                     "GET",

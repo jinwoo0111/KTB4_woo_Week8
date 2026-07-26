@@ -36,3 +36,5 @@ jwt:
 app:
   storage:
     upload-root: ${UPLOAD_PATH:./uploads}
+  cors:
+    allowed-origins: []

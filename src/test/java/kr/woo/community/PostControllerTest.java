@@ -11,17 +11,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithAnonymousUser;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.Mockito.when;
 
 @WebMvcTest(PostController.class)
 @Import(SecurityConfig.class)
+@TestPropertySource(properties = {
+        "app.cors.allowed-origins=http://localhost:5173"
+})
 class PostControllerTest {
 
     @Autowired
@@ -59,5 +66,44 @@ class PostControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("post_view_increase_success"))
                 .andExpect(jsonPath("$.data.view_count").value(11));
+    }
+
+    @Test
+    @DisplayName("허용된 origin의 CORS preflight 요청을 승인한다")
+    void allowCorsPreflightFromConfiguredOrigin() throws Exception {
+        mockMvc.perform(options("/posts")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "PATCH")
+                        .header(
+                                "Access-Control-Request-Headers",
+                                "authorization,content-type"
+                        ))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:5173"
+                ))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Methods",
+                        containsString("PATCH")
+                ))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("authorization")
+                ))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("content-type")
+                ));
+    }
+
+    @Test
+    @DisplayName("설정되지 않은 origin의 CORS preflight 요청을 거부한다")
+    void rejectCorsPreflightFromUnknownOrigin() throws Exception {
+        mockMvc.perform(options("/posts")
+                        .header("Origin", "http://localhost:5500")
+                        .header("Access-Control-Request-Method", "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
     }
 }
