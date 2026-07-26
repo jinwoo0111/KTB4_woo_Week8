@@ -41,3 +41,8 @@ data/
 *.trace.db
 
 /uploads
+
+### Local environment variables ###
+.env
+.env.*
+!.env.example
