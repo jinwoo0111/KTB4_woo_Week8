@@ -7,10 +7,12 @@ import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Map;
 
@@ -82,5 +84,22 @@ class GlobalExceptionHandlerTest {
         assertNotNull(response.getBody());
         assertEquals("invalid_request", response.getBody().getMessage());
         assertEquals("required", response.getBody().getData().get("file"));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 경로는 공통 형식의 404 응답을 반환한다")
+    void handleNoResourceFoundException() {
+        ResponseEntity<ApiResponse<Void>> response =
+                exceptionHandler.handleNoResourceFoundException(
+                        new NoResourceFoundException(
+                                HttpMethod.GET,
+                                "h2-console",
+                                "No static resource h2-console"
+                        )
+                );
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("not_found", response.getBody().getMessage());
     }
 }
