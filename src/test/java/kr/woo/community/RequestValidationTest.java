@@ -5,6 +5,7 @@ import jakarta.validation.Validator;
 import kr.woo.community.dto.CommentCreateRequest;
 import kr.woo.community.dto.CommentUpdateRequest;
 import kr.woo.community.dto.PostCreateRequest;
+import kr.woo.community.dto.PostUpdateRequest;
 import kr.woo.community.dto.UserPasswordUpdateRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,20 @@ class RequestValidationTest {
         ReflectionTestUtils.setField(request, "content", "");
 
         assertFalse(validator.validate(request).isEmpty());
+    }
+
+    @Test
+    @DisplayName("게시글 생성과 수정 내용은 32000자를 초과할 수 없다")
+    void validatePostContentMaxLength() {
+        String oversizedContent = "가".repeat(32_001);
+        PostCreateRequest createRequest = new PostCreateRequest();
+        PostUpdateRequest updateRequest = new PostUpdateRequest();
+        ReflectionTestUtils.setField(createRequest, "title", "title");
+        ReflectionTestUtils.setField(createRequest, "content", oversizedContent);
+        ReflectionTestUtils.setField(updateRequest, "content", oversizedContent);
+
+        assertFalse(validator.validate(createRequest).isEmpty());
+        assertFalse(validator.validate(updateRequest).isEmpty());
     }
 
     @Test

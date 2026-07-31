@@ -2,6 +2,7 @@ package kr.woo.community.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -14,6 +15,7 @@ public class PostCreateRequest {
     private String title;
 
     @NotBlank
+    @Size(max = 32_000)
     private String content;
 
     @JsonProperty("content_image")

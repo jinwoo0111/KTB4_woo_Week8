@@ -19,8 +19,7 @@ public class Post {
     @Column(nullable = false)
     private String title;
 
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, length = 32_000)
     private String content;
 
     @Column(name = "content_image")

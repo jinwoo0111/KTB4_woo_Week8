@@ -1,6 +1,7 @@
 package kr.woo.community.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
 public class PostUpdateRequest {
     private String title;
 
+    @Size(max = 32_000)
     private String content;
 
     @JsonProperty("content_image")
