@@ -8,7 +8,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -54,5 +57,32 @@ class PostRepositoryTest {
         int updatedRowCount = postRepository.increaseViewCount(post.getId());
 
         assertEquals(0, updatedRowCount);
+    }
+
+    @Test
+    @DisplayName("제목 검색은 검색어가 제목에 포함된 게시글만 조회한다")
+    void searchPostsByTitleMatchesTitleOnly() {
+        // given
+        User user = userRepository.save(
+                new User("search@test.com", "password", "검색작성자", null)
+        );
+        Post matchingPost = postRepository.save(
+                new Post("스프링 검색 기능", "JPA를 공부한다", null, user)
+        );
+        postRepository.save(
+                new Post("JPA 학습", "스프링을 공부한다", null, user)
+        );
+        postRepository.flush();
+
+        // when
+        List<Post> result = postRepository.searchPostsByTitle(
+                "스프링",
+                null,
+                PageRequest.of(0, 10)
+        );
+
+        // then
+        assertEquals(1, result.size());
+        assertEquals(matchingPost.getId(), result.get(0).getId());
     }
 }
