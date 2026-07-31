@@ -144,4 +144,67 @@ class PostRepositoryTest {
         assertTrue(result.stream().anyMatch(post -> post.getId().equals(titleMatchingPost.getId())));
         assertTrue(result.stream().anyMatch(post -> post.getId().equals(contentMatchingPost.getId())));
     }
+
+    @Test
+    @DisplayName("전체 검색은 검색어가 포함되어도 삭제된 게시글을 제외한다")
+    void searchPostsByTitleOrContentExcludesDeletedPost() {
+        // given
+        User user = userRepository.save(
+                new User("deleted-search@test.com", "password", "삭제검색작성자", null)
+        );
+        Post activePost = postRepository.save(
+                new Post("스프링 게시글", "JPA를 공부한다", null, user)
+        );
+        Post deletedPost = postRepository.save(
+                new Post("JPA 게시글", "스프링을 공부한다", null, user)
+        );
+        deletedPost.softDelete();
+        postRepository.flush();
+
+        // when
+        List<Post> result = postRepository.searchPostsByTitleOrContent(
+                "스프링",
+                null,
+                PageRequest.of(0, 10)
+        );
+
+        // then
+        assertEquals(1, result.size());
+        assertEquals(activePost.getId(), result.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("전체 검색은 커서보다 오래된 게시글을 ID 내림차순으로 요청한 개수만큼 조회한다")
+    void searchPostsByTitleOrContentAppliesCursorOrderAndSize() {
+        // given
+        User user = userRepository.save(
+                new User("cursor-search@test.com", "password", "커서검색작성자", null)
+        );
+        Post oldestPost = postRepository.save(
+                new Post("스프링 1", "첫 번째 게시글", null, user)
+        );
+        Post secondPost = postRepository.save(
+                new Post("스프링 2", "두 번째 게시글", null, user)
+        );
+        Post thirdPost = postRepository.save(
+                new Post("스프링 3", "세 번째 게시글", null, user)
+        );
+        Post cursorPost = postRepository.save(
+                new Post("스프링 4", "커서 게시글", null, user)
+        );
+        postRepository.flush();
+
+        // when
+        List<Post> result = postRepository.searchPostsByTitleOrContent(
+                "스프링",
+                cursorPost.getId(),
+                PageRequest.of(0, 2)
+        );
+
+        // then
+        assertEquals(2, result.size());
+        assertEquals(thirdPost.getId(), result.get(0).getId());
+        assertEquals(secondPost.getId(), result.get(1).getId());
+        assertTrue(result.stream().noneMatch(post -> post.getId().equals(oldestPost.getId())));
+    }
 }
