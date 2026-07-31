@@ -41,6 +41,39 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             Pageable pageable
     );
 
+    @Query("""
+       SELECT p
+       FROM Post p
+       JOIN FETCH p.author
+       WHERE p.deletedAt IS NULL
+       AND (:cursor IS NULL OR p.id < :cursor)
+       AND LOWER(p.content) LIKE CONCAT('%', :keyword, '%') ESCAPE '\\'
+       ORDER BY p.id DESC
+""")
+    List<Post> searchPostsByContent(
+            @Param("keyword") String keyword,
+            @Param("cursor") Long cursor,
+            Pageable pageable
+    );
+
+    @Query("""
+       SELECT p
+       FROM Post p
+       JOIN FETCH p.author
+       WHERE p.deletedAt IS NULL
+       AND (:cursor IS NULL OR p.id < :cursor)
+       AND (
+           LOWER(p.title) LIKE CONCAT('%', :keyword, '%') ESCAPE '\\'
+           OR LOWER(p.content) LIKE CONCAT('%', :keyword, '%') ESCAPE '\\'
+       )
+       ORDER BY p.id DESC
+""")
+    List<Post> searchPostsByTitleOrContent(
+            @Param("keyword") String keyword,
+            @Param("cursor") Long cursor,
+            Pageable pageable
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
        UPDATE Post p

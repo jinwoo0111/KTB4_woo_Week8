@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -84,5 +85,63 @@ class PostRepositoryTest {
         // then
         assertEquals(1, result.size());
         assertEquals(matchingPost.getId(), result.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("내용 검색은 대소문자를 구분하지 않고 내용에 포함된 게시글만 조회한다")
+    void searchPostsByContentMatchesContentOnlyIgnoringCase() {
+        // given
+        User user = userRepository.save(
+                new User("content-search@test.com", "password", "내용검색작성자", null)
+        );
+        Post matchingPost = postRepository.save(
+                new Post("JPA 학습", "Spring 검색 기능을 공부한다", null, user)
+        );
+        postRepository.save(
+                new Post("Spring 제목", "JPA를 공부한다", null, user)
+        );
+        postRepository.flush();
+
+        // when
+        List<Post> result = postRepository.searchPostsByContent(
+                "spring",
+                null,
+                PageRequest.of(0, 10)
+        );
+
+        // then
+        assertEquals(1, result.size());
+        assertEquals(matchingPost.getId(), result.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("전체 검색은 제목 또는 내용에 검색어가 포함된 게시글을 조회한다")
+    void searchPostsByTitleOrContentMatchesEitherField() {
+        // given
+        User user = userRepository.save(
+                new User("all-search@test.com", "password", "전체검색작성자", null)
+        );
+        Post titleMatchingPost = postRepository.save(
+                new Post("스프링 게시글", "JPA를 공부한다", null, user)
+        );
+        Post contentMatchingPost = postRepository.save(
+                new Post("JPA 게시글", "스프링을 공부한다", null, user)
+        );
+        postRepository.save(
+                new Post("데이터베이스 게시글", "커서 페이지네이션을 공부한다", null, user)
+        );
+        postRepository.flush();
+
+        // when
+        List<Post> result = postRepository.searchPostsByTitleOrContent(
+                "스프링",
+                null,
+                PageRequest.of(0, 10)
+        );
+
+        // then
+        assertEquals(2, result.size());
+        assertTrue(result.stream().anyMatch(post -> post.getId().equals(titleMatchingPost.getId())));
+        assertTrue(result.stream().anyMatch(post -> post.getId().equals(contentMatchingPost.getId())));
     }
 }
