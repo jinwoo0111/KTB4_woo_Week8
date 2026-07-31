@@ -6,6 +6,8 @@ import kr.woo.community.entity.PostLike;
 import kr.woo.community.entity.User;
 import kr.woo.community.entity.Comment;
 import kr.woo.community.exception.InvalidPaginationParameterException;
+import kr.woo.community.exception.InvalidSearchKeywordException;
+import kr.woo.community.exception.InvalidSearchScopeException;
 import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
@@ -25,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +43,14 @@ public class PostService {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final int MAX_PAGE_SIZE = 10;
+    private static final int MIN_SEARCH_KEYWORD_LENGTH = 2;
+    private static final int MAX_SEARCH_KEYWORD_LENGTH = 100;
+
+    private enum SearchScope {
+        ALL,
+        TITLE,
+        CONTENT
+    }
 
     public Post findById(Long id) {
         Post post = postRepository.findById(id)
@@ -50,19 +61,87 @@ public class PostService {
         return post;
     }
 
-    // GET /posts?cursor=16&size=10
-    public PostListResponse getPosts(Long cursor, int size){
+    private String normalizeKeyword(String keyword) {
+        String normalizedKeyword = keyword.strip();
+
+        if (normalizedKeyword.isEmpty()
+                || normalizedKeyword.length() < MIN_SEARCH_KEYWORD_LENGTH
+                || normalizedKeyword.length() > MAX_SEARCH_KEYWORD_LENGTH) {
+            throw new InvalidSearchKeywordException();
+        }
+
+        return normalizedKeyword.toLowerCase(Locale.ROOT);
+    }
+
+    private String escapeLikeKeyword(String keyword) {
+        return keyword
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+    }
+
+    private SearchScope resolveSearchScope(String scope) {
+        if (scope == null) {
+            return SearchScope.ALL;
+        }
+
+        return switch (scope) {
+            case "all" -> SearchScope.ALL;
+            case "title" -> SearchScope.TITLE;
+            case "content" -> SearchScope.CONTENT;
+            default -> throw new InvalidSearchScopeException();
+        };
+    }
+
+    public PostListResponse getPosts(PostListRequest request) {
+        Long cursor = request.getCursor();
+        int size = request.getSize();
+
         // cursor 나 size 오류 예외
         if(size <= 0 || size > MAX_PAGE_SIZE || (cursor != null && cursor <= 0)){
             throw new InvalidPaginationParameterException();
         }
 
-        // 조건에 맞는 게시글 size + 1 개 조회
-        List<Post> posts = postRepository.findPostsByCursor(
-                cursor,
-                PageRequest.of(0, size + 1)
-        );
+        PageRequest pageable = PageRequest.of(0, size + 1);
+        String keyword = request.getKeyword();
+        String scope = request.getScope();
 
+        List<Post> posts;
+
+        if (keyword == null) {
+            if (scope != null) {
+                throw new InvalidSearchKeywordException();
+            }
+
+            posts = postRepository.findPostsByCursor(cursor, pageable);
+        } else {
+            String normalizedKeyword = normalizeKeyword(keyword);
+            String escapedKeyword = escapeLikeKeyword(normalizedKeyword);
+            SearchScope searchScope = resolveSearchScope(scope);
+
+            posts = switch (searchScope) {
+                case ALL -> postRepository.searchPostsByTitleOrContent(
+                        escapedKeyword,
+                        cursor,
+                        pageable
+                );
+                case TITLE -> postRepository.searchPostsByTitle(
+                        escapedKeyword,
+                        cursor,
+                        pageable
+                );
+                case CONTENT -> postRepository.searchPostsByContent(
+                        escapedKeyword,
+                        cursor,
+                        pageable
+                );
+            };
+        }
+
+        return createPostListResponse(posts, size);
+    }
+
+    private PostListResponse createPostListResponse(List<Post> posts, int size) {
         // 응답 가능한 게시글 수가 요청 size 보다 크면 다음 페이지가 존재
         boolean hasNext = posts.size() > size;
 

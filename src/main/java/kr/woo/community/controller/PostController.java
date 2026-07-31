@@ -18,10 +18,9 @@ public class PostController {
 
     @GetMapping("/posts")
     public ResponseEntity<ApiResponse<PostListResponse>> getPosts(
-            @RequestParam(required = false) Long cursor, // URL에서 cursor 값(필수X)
-            @RequestParam(defaultValue = "10") int size // URL에서 size (기본값 10)
+            @ModelAttribute PostListRequest request
     ) {
-        PostListResponse postListResponse = postService.getPosts(cursor, size);
+        PostListResponse postListResponse = postService.getPosts(request);
 
         ApiResponse<PostListResponse> response = new ApiResponse<>(
                 "posts_success",
