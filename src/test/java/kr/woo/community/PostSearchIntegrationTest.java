@@ -121,6 +121,19 @@ class PostSearchIntegrationTest {
                 .andExpect(jsonPath("$.message").value("invalid_search_scope"));
     }
 
+    @Test
+    @DisplayName("검색 결과가 없으면 200과 빈 커서 페이지를 반환한다")
+    void searchReturnsEmptyPageWhenNoPostMatches() throws Exception {
+        mockMvc.perform(get("/posts")
+                        .param("keyword", "절대존재하지않는검색어"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("posts_success"))
+                .andExpect(jsonPath("$.data.posts").isEmpty())
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.has_next").value(false))
+                .andExpect(jsonPath("$.data.next_cursor").doesNotExist());
+    }
+
     private User saveUser(String email, String nickname) {
         return userRepository.save(
                 new User(email, "password", nickname, null)

@@ -186,6 +186,38 @@ class PostServiceTest {
         );
     }
 
+    @ParameterizedTest
+    @MethodSource("validBoundarySearchKeywords")
+    @DisplayName("최소 및 최대 길이의 검색어는 검색할 수 있다")
+    void getPostsAcceptsKeywordLengthBoundaries(String keyword) {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword(keyword);
+
+        when(postRepository.searchPostsByTitleOrContent(
+                eq(keyword),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        verify(postRepository).searchPostsByTitleOrContent(
+                eq(keyword),
+                isNull(),
+                any(Pageable.class)
+        );
+    }
+
+    private static Stream<String> validBoundarySearchKeywords() {
+        return Stream.of(
+                "가".repeat(2),
+                "가".repeat(100)
+        );
+    }
+
     @Test
     @DisplayName("검색어 없이 검색 범위만 전달하면 검색어 오류가 발생한다")
     void getPostsFailsWhenScopeExistsWithoutKeyword() {
