@@ -1,0 +1,29 @@
+spring:
+  config:
+    activate:
+      on-profile: benchmark
+
+  datasource:
+    url: jdbc:h2:file:${BENCHMARK_DB_PATH:./benchmark-data/community-benchmark}
+
+  h2:
+    console:
+      enabled: true
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: ${BENCHMARK_JDBC_BATCH_SIZE:100}
+        order_inserts: true
+
+app:
+  benchmark:
+    generator:
+      enabled: false
+      post-count: 1000
+      author-count: 100
+      persistence-batch-size: 1000
+      seed: 20260802
