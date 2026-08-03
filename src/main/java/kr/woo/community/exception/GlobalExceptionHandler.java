@@ -40,6 +40,17 @@ public class GlobalExceptionHandler {
                 .body(new ApiResponse<>(e.getMessage(), null));
     }
 
+    @ExceptionHandler({
+            InvalidSearchKeywordException.class,
+            InvalidSearchScopeException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleInvalidSearchParameter(
+            RuntimeException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>(e.getMessage(), null));
+    }
+
     // 댓글을 찾을 수 없을 때 404 응답 생성
     @ExceptionHandler(CommentNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleCommentNotFound(

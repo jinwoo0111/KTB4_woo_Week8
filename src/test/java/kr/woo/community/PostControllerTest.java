@@ -3,10 +3,19 @@ package kr.woo.community;
 import kr.woo.community.controller.PostController;
 import kr.woo.community.security.config.SecurityConfig;
 import kr.woo.community.security.jwt.JWTUtil;
+import kr.woo.community.dto.PostListRequest;
+import kr.woo.community.dto.PostListResponse;
 import kr.woo.community.dto.PostViewResponse;
+import kr.woo.community.exception.InvalidSearchKeywordException;
+import kr.woo.community.exception.InvalidSearchScopeException;
 import kr.woo.community.service.PostService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -15,7 +24,15 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+import java.util.stream.Stream;
+
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -44,8 +61,89 @@ class PostControllerTest {
     @DisplayName("비로그인 사용자는 게시글 목록을 조회할 수 있다")
     @WithAnonymousUser
     void getPostsWithoutLoginSuccess() throws Exception {
+        when(postService.getPosts(any(PostListRequest.class)))
+                .thenReturn(new PostListResponse(List.of(), 0, false, null));
+
         mockMvc.perform(get("/posts"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("posts_success"));
+
+        ArgumentCaptor<PostListRequest> requestCaptor =
+                ArgumentCaptor.forClass(PostListRequest.class);
+        verify(postService).getPosts(requestCaptor.capture());
+
+        PostListRequest request = requestCaptor.getValue();
+        assertNull(request.getKeyword());
+        assertNull(request.getScope());
+        assertNull(request.getCursor());
+        assertEquals(10, request.getSize());
+    }
+
+    @Test
+    @DisplayName("게시글 목록 검색 파라미터를 요청 DTO로 바인딩해 Service에 전달한다")
+    @WithAnonymousUser
+    void getPostsBindsSearchParametersToRequest() throws Exception {
+        when(postService.getPosts(any(PostListRequest.class)))
+                .thenReturn(new PostListResponse(List.of(), 0, false, null));
+
+        mockMvc.perform(get("/posts")
+                        .param("keyword", "Spring")
+                        .param("scope", "title")
+                        .param("cursor", "100")
+                        .param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("posts_success"));
+
+        ArgumentCaptor<PostListRequest> requestCaptor =
+                ArgumentCaptor.forClass(PostListRequest.class);
+        verify(postService).getPosts(requestCaptor.capture());
+
+        PostListRequest request = requestCaptor.getValue();
+        assertEquals("Spring", request.getKeyword());
+        assertEquals("title", request.getScope());
+        assertEquals(100L, request.getCursor());
+        assertEquals(5, request.getSize());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cursor", "size"})
+    @DisplayName("숫자 목록 파라미터에 문자열을 전달하면 잘못된 요청을 반환한다")
+    void getPostsRejectsInvalidNumericParameterType(String parameterName) throws Exception {
+        mockMvc.perform(get("/posts")
+                        .param(parameterName, "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("invalid_request"));
+
+        verify(postService, never()).getPosts(any(PostListRequest.class));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSearchExceptions")
+    @DisplayName("검색 요청 오류를 400과 검색 오류 메시지로 반환한다")
+    void getPostsReturnsBadRequestForSearchException(
+            RuntimeException exception,
+            String expectedMessage
+    ) throws Exception {
+        when(postService.getPosts(any(PostListRequest.class)))
+                .thenThrow(exception);
+
+        mockMvc.perform(get("/posts")
+                        .param("keyword", "스프링"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(expectedMessage));
+    }
+
+    private static Stream<Arguments> invalidSearchExceptions() {
+        return Stream.of(
+                Arguments.of(
+                        new InvalidSearchKeywordException(),
+                        "invalid_search_keyword"
+                ),
+                Arguments.of(
+                        new InvalidSearchScopeException(),
+                        "invalid_search_scope"
+                )
+        );
     }
 
     @Test

@@ -37,6 +37,7 @@ out/
 .vscode/
 
 data/
+/benchmark-data/
 *.mv.db
 *.trace.db
 

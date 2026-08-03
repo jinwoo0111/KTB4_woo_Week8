@@ -2,9 +2,14 @@ package kr.woo.community;
 
 import kr.woo.community.entity.Post;
 import kr.woo.community.entity.User;
+import kr.woo.community.dto.PostListRequest;
+import kr.woo.community.dto.PostListResponse;
 import kr.woo.community.dto.PostUpdateRequest;
 import kr.woo.community.exception.ConflictException;
+import kr.woo.community.exception.InvalidPaginationParameterException;
 import kr.woo.community.exception.InvalidRequestException;
+import kr.woo.community.exception.InvalidSearchKeywordException;
+import kr.woo.community.exception.InvalidSearchScopeException;
 import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.repository.CommentRepository;
@@ -16,21 +21,34 @@ import kr.woo.community.service.FileStorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +71,334 @@ class PostServiceTest {
 
     @InjectMocks
     private PostService postService;
+
+    @Test
+    @DisplayName("검색어가 없으면 다음 페이지 확인을 위해 기존 목록을 한 개 더 조회한다")
+    void getPostsWithoutKeywordUsesDefaultListQuery() {
+        // given
+        PostListRequest request = new PostListRequest();
+        when(postRepository.findPostsByCursor(isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        // when
+        PostListResponse response = postService.getPosts(request);
+
+        // then
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(postRepository).findPostsByCursor(isNull(), pageableCaptor.capture());
+        assertEquals(11, pageableCaptor.getValue().getPageSize());
+
+        verify(postRepository, never()).searchPostsByTitleOrContent(any(), any(), any());
+        verify(postRepository, never()).searchPostsByTitle(any(), any(), any());
+        verify(postRepository, never()).searchPostsByContent(any(), any(), any());
+
+        assertEquals(0, response.getCount());
+        assertFalse(response.isHasNext());
+        assertNull(response.getNextCursor());
+    }
+
+    @Test
+    @DisplayName("제목 검색은 검색어를 정규화하고 이스케이프해 제목 검색 쿼리를 호출한다")
+    void getPostsWithTitleScopeNormalizesKeyword() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("  SPRING   _100%  ");
+        request.setScope("title");
+        request.setCursor(100L);
+        request.setSize(5);
+
+        when(postRepository.searchPostsByTitle(
+                any(),
+                eq(100L),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        ArgumentCaptor<String> keywordCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+
+        verify(postRepository).searchPostsByTitle(
+                keywordCaptor.capture(),
+                eq(100L),
+                pageableCaptor.capture()
+        );
+
+        assertEquals("spring   \\_100\\%", keywordCaptor.getValue());
+        assertEquals(6, pageableCaptor.getValue().getPageSize());
+
+        verify(postRepository, never()).searchPostsByTitleOrContent(any(), any(), any());
+        verify(postRepository, never()).searchPostsByContent(any(), any(), any());
+        verify(postRepository, never()).findPostsByCursor(any(), any());
+    }
+
+    @Test
+    @DisplayName("검색어의 역슬래시는 LIKE 일반 문자로 검색되도록 이스케이프한다")
+    void getPostsEscapesBackslashInKeyword() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("C:\\Temp");
+        request.setScope("title");
+
+        when(postRepository.searchPostsByTitle(
+                any(),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        ArgumentCaptor<String> keywordCaptor = ArgumentCaptor.forClass(String.class);
+        verify(postRepository).searchPostsByTitle(
+                keywordCaptor.capture(),
+                isNull(),
+                any(Pageable.class)
+        );
+        assertEquals("c:\\\\temp", keywordCaptor.getValue());
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidSearchKeywords")
+    @DisplayName("빈 검색어와 길이 조건을 위반한 검색어는 검색하지 않는다")
+    void getPostsFailsWhenKeywordIsInvalid(String keyword) {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword(keyword);
+
+        // when & then
+        assertThrows(
+                InvalidSearchKeywordException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    private static Stream<String> invalidSearchKeywords() {
+        return Stream.of(
+                "",
+                "   ",
+                "가",
+                "가".repeat(101)
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("validBoundarySearchKeywords")
+    @DisplayName("최소 및 최대 길이의 검색어는 검색할 수 있다")
+    void getPostsAcceptsKeywordLengthBoundaries(String keyword) {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword(keyword);
+
+        when(postRepository.searchPostsByTitleOrContent(
+                eq(keyword),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        verify(postRepository).searchPostsByTitleOrContent(
+                eq(keyword),
+                isNull(),
+                any(Pageable.class)
+        );
+    }
+
+    private static Stream<String> validBoundarySearchKeywords() {
+        return Stream.of(
+                "가".repeat(2),
+                "가".repeat(100)
+        );
+    }
+
+    @Test
+    @DisplayName("검색어 없이 검색 범위만 전달하면 검색어 오류가 발생한다")
+    void getPostsFailsWhenScopeExistsWithoutKeyword() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setScope("title");
+
+        // when & then
+        assertThrows(
+                InvalidSearchKeywordException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    @Test
+    @DisplayName("허용되지 않은 검색 범위는 검색 범위 오류가 발생한다")
+    void getPostsFailsWhenScopeIsInvalid() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+        request.setScope("author");
+
+        // when & then
+        assertThrows(
+                InvalidSearchScopeException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "all")
+    @DisplayName("검색 범위를 생략하거나 all로 지정하면 제목과 내용 전체를 검색한다")
+    void getPostsUsesTitleOrContentQueryForAllScope(String scope) {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+        request.setScope(scope);
+
+        when(postRepository.searchPostsByTitleOrContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        verify(postRepository).searchPostsByTitleOrContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        );
+        verify(postRepository, never()).searchPostsByTitle(any(), any(), any());
+        verify(postRepository, never()).searchPostsByContent(any(), any(), any());
+        verify(postRepository, never()).findPostsByCursor(any(), any());
+    }
+
+    @Test
+    @DisplayName("content 검색 범위는 내용 검색 쿼리를 호출한다")
+    void getPostsUsesContentQueryForContentScope() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+        request.setScope("content");
+
+        when(postRepository.searchPostsByContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        // when
+        postService.getPosts(request);
+
+        // then
+        verify(postRepository).searchPostsByContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        );
+        verify(postRepository, never()).searchPostsByTitleOrContent(any(), any(), any());
+        verify(postRepository, never()).searchPostsByTitle(any(), any(), any());
+        verify(postRepository, never()).findPostsByCursor(any(), any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidPaginationRequests")
+    @DisplayName("페이지 크기 또는 커서가 허용 범위를 벗어나면 조회하지 않는다")
+    void getPostsFailsWhenPaginationIsInvalid(Long cursor, int size) {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setCursor(cursor);
+        request.setSize(size);
+
+        // when & then
+        assertThrows(
+                InvalidPaginationParameterException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    private static Stream<Arguments> invalidPaginationRequests() {
+        return Stream.of(
+                Arguments.of(null, 0),
+                Arguments.of(null, 11),
+                Arguments.of(0L, 10),
+                Arguments.of(-1L, 10)
+        );
+    }
+
+    @Test
+    @DisplayName("추가 조회 결과가 있으면 응답의 마지막 게시글을 다음 커서로 사용한다")
+    void getPostsBuildsNextCursorFromLastResponsePost() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setSize(2);
+
+        User author = mock(User.class);
+        Post post30 = mock(Post.class);
+        Post post20 = mock(Post.class);
+        Post lookaheadPost10 = mock(Post.class);
+
+        when(author.getNickname()).thenReturn("작성자");
+        when(post30.getId()).thenReturn(30L);
+        when(post30.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(post30.getAuthor()).thenReturn(author);
+        when(post20.getId()).thenReturn(20L);
+        when(post20.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(post20.getAuthor()).thenReturn(author);
+
+        when(postRepository.findPostsByCursor(isNull(), any(Pageable.class)))
+                .thenReturn(List.of(post30, post20, lookaheadPost10));
+
+        // when
+        PostListResponse response = postService.getPosts(request);
+
+        // then
+        assertEquals(2, response.getPosts().size());
+        assertEquals(30L, response.getPosts().get(0).getPostId());
+        assertEquals(20L, response.getPosts().get(1).getPostId());
+        assertEquals(2, response.getCount());
+        assertTrue(response.isHasNext());
+        assertEquals(20L, response.getNextCursor());
+    }
+
+    @Test
+    @DisplayName("조회 결과가 요청 크기와 같으면 다음 페이지와 다음 커서가 없다")
+    void getPostsReturnsNoNextCursorForLastPage() {
+        // given
+        PostListRequest request = new PostListRequest();
+        request.setSize(2);
+
+        User author = mock(User.class);
+        Post post30 = mock(Post.class);
+        Post post20 = mock(Post.class);
+
+        when(author.getNickname()).thenReturn("작성자");
+        when(post30.getId()).thenReturn(30L);
+        when(post30.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(post30.getAuthor()).thenReturn(author);
+        when(post20.getId()).thenReturn(20L);
+        when(post20.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(post20.getAuthor()).thenReturn(author);
+
+        when(postRepository.findPostsByCursor(isNull(), any(Pageable.class)))
+                .thenReturn(List.of(post30, post20));
+
+        // when
+        PostListResponse response = postService.getPosts(request);
+
+        // then
+        assertEquals(2, response.getPosts().size());
+        assertEquals(2, response.getCount());
+        assertFalse(response.isHasNext());
+        assertNull(response.getNextCursor());
+    }
 
     @Test
     @DisplayName("이미 좋아요한 게시글에 다시 좋아요하면 충돌 예외가 발생한다")
