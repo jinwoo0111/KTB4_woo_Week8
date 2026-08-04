@@ -72,7 +72,7 @@ PostgreSQL 이전은 다음 순서로 진행한다.
 | 1-1 | PostgreSQL 이전 정책과 환경 설계 | 완료 |
 | 1-2 | PostgreSQL 실행 환경과 스키마 기반 구축 | 완료 |
 | 1-3 | 기존 기능과 benchmark 데이터 동등성 검증 | 완료 |
-| 1-4 | canonical benchmark dataset 및 dump·restore 기반 구축 | 진행 전 |
+| 1-4 | 재현성과 전체 회귀 검증 및 LIKE 기준선 측정 준비 | 완료 |
 
 검색 방식별 `LIKE`, `pg_trgm`, Full Text Search 구현과 성능 측정은 PostgreSQL 이전
 기반과 재현 가능한 benchmark dataset을 완성한 뒤 진행한다.
@@ -1126,49 +1126,799 @@ git diff --check
 - 캐시 없이 전체 검증을 두 번 실행해 깨끗한 DB에서 결과가 재현됨을 확인했다.
 - Testcontainers가 테스트 후 PostgreSQL 컨테이너를 정리함을 확인했다.
 
-## 5. 현재 상태와 다음 작업
+## 5. 1-4. 재현성과 전체 회귀 검증 및 LIKE 기준선 측정 준비
 
-### 5.1. 1-3 완료 상태
+### 5.1. 10만 건 canonical benchmark 데이터 생성·검증
 
-PostgreSQL 실행 기반, 기본 스키마와 기존 기능·benchmark 데이터 동등성 검증을
-완료했다.
-
-```text
-PostgreSQL 18.4 이전 기반
-├── local·benchmark Compose 환경
-├── Flyway V1과 Hibernate validate
-├── 명시적 sequence
-├── Testcontainers PostgreSQL 통합 테스트
-├── 기존 기능 동등성 검증
-└── PostgreSQL benchmark generator와 1천 건 데이터 동등성 검증
-```
-
-현재 검색 방식은 기존 JPA `LOWER(column) LIKE '%keyword%'` 쿼리를 유지한다.
-PostgreSQL에서 `LIKE` 기준 성능을 측정하거나 `pg_trgm`, Full Text Search를 적용한
-상태는 아니다.
-
-### 5.2. 남은 경계
-
-다음 항목은 아직 구현하지 않았다.
+검색 방식 비교의 원본으로 사용할 데이터를 `postgres-benchmark`에 생성했다.
 
 ```text
-10만 건 canonical dataset
-data-only dump와 checksum
-dump restore 후 sequence 검증과 ANALYZE
-PostgreSQL LIKE 기준 성능 측정
-pg_trgm 적용·측정·제거
-Full Text Search 적용·측정·제거
-최종 검색 방식 결정
+PostgreSQL image: postgres:18.4
+database: community_benchmark
+user: community_benchmark
+host port: 5433
+volume: community-postgres-benchmark-data
 ```
 
-### 5.3. 다음 단계
+generator 입력은 다음 값으로 고정했다.
 
-다음 단계는 canonical benchmark dataset 및 dump·restore 기반 구축이다.
+```text
+post-count: 100000
+author-count: 100
+persistence-batch-size: 1000
+seed: 20260802
+```
 
-1. 빈 V1 상태의 benchmark PostgreSQL에 고정 설정으로 10만 건을 생성한다.
-2. 건수, 작성자, 삭제, marker 및 본문 길이 분포를 검증한다.
-3. 검증된 데이터를 data-only dump로 만들고 checksum을 기록한다.
-4. 빈 V1 DB에 복원해 데이터, sequence 및 통계를 검증한다.
+Flyway V1과 Hibernate `validate`가 통과한 빈 benchmark DB에서 generator를 실행했다.
+사용자 100명과 게시글 10만 건이 생성됐으며 generator가 기록한 약 10.9초는 데이터 생성
+완료 여부를 확인하기 위한 값일 뿐 검색 성능 결과로 사용하지 않는다.
 
-이 기반을 완성한 뒤 PostgreSQL 기본 `LIKE`, `pg_trgm` 및 Full Text Search를 동일한
-데이터와 부하 조건에서 비교한다.
+기본 데이터 상태의 검증 결과는 다음과 같다.
+
+| 항목 | 기대값 | 실제값 |
+| --- | ---: | ---: |
+| 사용자 | 100 | 100 |
+| 게시글 | 100,000 | 100,000 |
+| 활성 게시글 | 95,000 | 95,000 |
+| 삭제 게시글 | 5,000 | 5,000 |
+| 작성자별 게시글 | 1,000 | 최소·최대 모두 1,000 |
+| 댓글 | 0 | 0 |
+| 좋아요 | 0 | 0 |
+
+검색 marker는 삭제되지 않은 게시글에만 배치된다.
+
+| marker | 위치 | 기대값 | 실제값 |
+| --- | --- | ---: | ---: |
+| `qzcommona91x` | 본문 | 9,500 | 9,500 |
+| `rxmediumb82y` | 본문 | 950 | 950 |
+| `tvrarec73z` | 본문 | 95 | 95 |
+| `wxfixedd64k` | 본문 | 10 | 10 |
+| `ypscopee55m` | 제목 | 950 | 950 |
+| `ypscopee55m` | 본문 | 950 | 950 |
+| `zvneverf46n` | 제목·본문 | 0 | 0 |
+
+`ypscopee55m`이 제목과 본문에 들어간 게시글 ID 집합은 동일했으며 삭제 게시글에 포함된
+marker는 0건이었다.
+
+본문 길이 분포도 generator 규칙과 일치했다.
+
+| 본문 길이 | 기대값 | 실제값 |
+| --- | ---: | ---: |
+| 300~799자 | 60,000 | 60,000 |
+| 800~1,999자 | 30,000 | 30,000 |
+| 2,000~7,999자 | 9,000 | 9,000 |
+| 8,000~15,999자 | 0 | 0 |
+| 16,000~32,000자 | 1,000 | 1,000 |
+
+다음 무결성 조건도 함께 확인했다.
+
+```text
+필수 컬럼 NULL: 0건
+고아 posts.user_id: 0건
+content_image가 설정된 게시글: 0건
+like_count·comment_count·view_count가 0이 아닌 게시글: 0건
+pg_trgm extension: 없음
+tsvector 컬럼: 없음
+```
+
+이 검증을 다시 실행할 수 있도록
+`benchmark/postgresql/verify-canonical-dataset.sql`을 추가했다. 검증 SQL은 기대값이 하나라도
+다르면 예외를 발생시키며, 원본 DB와 dump 복원본에서 모두 통과했다. 검증을 마친 현재
+`community_benchmark`를 canonical dataset 원본으로 확정했다.
+
+### 5.2. dump·checksum·restore 기반 재현성 검증
+
+canonical 원본을 검색 방식마다 같은 상태로 복원하기 위해 PostgreSQL custom-format의
+data-only dump를 생성했다.
+
+```text
+file: benchmark-data/postgresql/canonical/community-benchmark-100k.dump
+format: PostgreSQL custom data-only archive
+size: 51,775,875 bytes
+SHA-256: e2dbcf795e0b124ac93f210541d49e9e8da93064cc804a779a155e6325c374c6
+```
+
+archive에는 다음 항목이 포함된다.
+
+```text
+포함
+├── users 데이터
+├── posts 데이터
+├── comments 데이터
+├── post_likes 데이터
+└── 네 sequence의 상태
+
+제외
+├── 테이블·제약·인덱스와 같은 schema DDL
+├── owner와 privileges
+└── flyway_schema_history 데이터
+```
+
+schema와 Flyway 이력을 제외했으므로 복원 대상 DB에는 현재 애플리케이션의 Flyway V1을
+먼저 적용해야 한다. 이를 통해 오래된 dump가 애플리케이션의 확정된 schema를 덮어쓰지
+않고, 현재 migration과 데이터가 서로 호환되는지도 함께 확인한다.
+
+checksum 파일과 생성 provenance는 다음 파일로 분리했다.
+
+```text
+community-benchmark-100k.dump.sha256
+└── dump 파일 바이트가 변경되지 않았는지 확인
+
+community-benchmark-100k.manifest.txt
+└── PostgreSQL image, Git HEAD, generator 설정과 파일 hash,
+    데이터 fingerprint, sequence 및 최초 restore 결과 기록
+```
+
+별도 임시 DB에 다음 순서로 복원 검증을 수행했다.
+
+```text
+빈 community_benchmark_restore_verify 생성
+    ↓
+애플리케이션으로 Flyway V1 적용
+    ↓
+Hibernate validate 성공
+    ↓
+checksum 재확인
+    ↓
+pg_restore --exit-on-error 실행
+    ↓
+전체 canonical 분포 검증
+    ↓
+원본·복원본 전체 컬럼 fingerprint 비교
+    ↓
+sequence 상태 비교
+    ↓
+ANALYZE 실행
+```
+
+역검증에서 사용자와 게시글의 모든 컬럼을 ID 순서대로 다시 hash한 결과는 다음과 같다.
+
+| 대상 | 원본 | 복원본 |
+| --- | --- | --- |
+| users | `157df43f62ff3ef7274e75a4c58e7df2` | `157df43f62ff3ef7274e75a4c58e7df2` |
+| posts | `ae5472e5c84907730a6a4a46ce50f811` | `ae5472e5c84907730a6a4a46ce50f811` |
+
+fingerprint 계산 방식이 최초 manifest를 만들 때 사용한 방식과 달라 hash 문자열 자체는
+manifest의 값과 다르다. 같은 계산식을 적용한 원본과 복원본이 일치하는지가 동등성 판단
+기준이다. 두 방식 모두 원본과 복원본이 일치했다.
+
+sequence도 원본과 복원본에서 동일했다.
+
+| sequence | last value | increment | 다음 값의 기준 |
+| --- | ---: | ---: | --- |
+| `users_seq` | 101 | 50 | 최대 `user_id`보다 큰 범위 |
+| `posts_seq` | 100,001 | 50 | 최대 `post_id`보다 큰 범위 |
+| `comments_seq` | 호출 전 | 50 | 데이터 없음 |
+| `post_likes_seq` | 호출 전 | 50 | 데이터 없음 |
+
+복원본의 Flyway 이력은 V1 성공 1건뿐이며 dump에서 유입된 이력이 아니다. 복원 후
+`ANALYZE`도 완료했다. 역검증에 사용한 임시 DB는 삭제했고 canonical 원본과 dump는
+보존했다.
+
+### 5.3. 전체 회귀 검증과 실행 환경 격리
+
+일반 개발용 DB와 benchmark DB를 동시에 확인해 서로 다른 database, port 및 volume을
+사용하는지 검증했다.
+
+```text
+postgres-local
+├── database: community
+├── port: 127.0.0.1:5432
+├── volume: community-postgres-local-data
+└── 데이터: 사용자 0, 게시글 0
+
+postgres-benchmark
+├── database: community_benchmark
+├── port: 127.0.0.1:5433
+├── volume: community-postgres-benchmark-data
+└── 데이터: 사용자 100, 게시글 100,000
+```
+
+두 컨테이너의 동시 시작, 중지 및 재시작 후에도 local은 빈 상태였고 benchmark의 건수와
+게시글 fingerprint는 유지됐다. 공식 측정 준비 스크립트는 local 컨테이너를 중지한 뒤
+benchmark 컨테이너만 시작하므로 두 PostgreSQL 프로세스의 자원 경쟁도 방지한다.
+
+전체 검증은 이전 Gradle 결과를 재사용하지 않도록 강제 재실행했다.
+
+```bash
+./gradlew test postgresIntegrationTest bootJar --rerun-tasks
+```
+
+| 실행 경로 | 테스트 수 | skipped | failures | errors |
+| --- | ---: | ---: | ---: | ---: |
+| 빠른 H2 회귀 테스트 | 124 | 0 | 0 | 0 |
+| PostgreSQL 통합 테스트 | 13 | 0 | 0 | 0 |
+
+Gradle task 10개가 모두 실제 실행됐고 `BUILD SUCCESSFUL`로 종료됐다. 테스트 전후
+canonical 게시글 fingerprint는 `ae5472e5c84907730a6a4a46ce50f811`로 동일했다.
+Testcontainers PostgreSQL과 Ryuk 컨테이너도 테스트 프로세스 종료 후 정리됐다.
+
+생성된 실행 JAR도 확인했다.
+
+```text
+Flyway V1 migration: 포함
+PostgreSQL JDBC 42.7.10: 포함
+Flyway PostgreSQL 11.14.1: 포함
+H2: 포함하지 않음
+JAR SHA-256: 5db7f0045bc2da093291978e65b17f729813df6af965f214fc224e1966fbeccb
+```
+
+H2는 테스트 runtime에만 존재하므로 benchmark 애플리케이션 실행 결과에 영향을 주지
+않는다.
+
+### 5.4. PostgreSQL LIKE 기준선 측정 조건 확정·준비
+
+현재 JPA의 `LOWER(column) LIKE '%keyword%'` 검색을 변경하지 않고 PostgreSQL 기준선을
+측정하기 위한 조건을 고정했다.
+
+애플리케이션 실행 조건은 다음과 같다.
+
+```text
+Java: Eclipse Temurin 21.0.11
+Spring profile: benchmark
+server port: 18084
+generator: disabled
+JVM heap: -Xms1g -Xmx1g
+Hikari maximum-pool-size: 10
+Hikari minimum-idle: 10
+Hikari connection-timeout: 30000ms
+```
+
+PostgreSQL readiness 과정에서는 canonical dump checksum을 먼저 확인하고 `ANALYZE`를
+실행한다. 측정 시 기록할 현재 주요 설정은 다음과 같다.
+
+```text
+PostgreSQL: 18.4 (Debian 18.4-1.pgdg13+1)
+shared_buffers: 128MB
+work_mem: 4MB
+maintenance_work_mem: 64MB
+effective_cache_size: 4GB
+max_connections: 100
+random_page_cost: 4
+jit: on
+```
+
+k6도 tag가 아닌 image digest로 고정했다.
+
+```text
+k6: 2.1.0
+platform: linux/arm64
+image: grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa
+```
+
+공통 요청 조건은 다음과 같다.
+
+```http
+GET /posts?keyword=qzcommona91x&scope=all&size=10
+```
+
+측정 순서와 반복 조건을 고정했다.
+
+```text
+smoke
+└── 1 VU, 1 iteration
+
+warm-up
+└── 1 VU, 30초
+
+단일 사용자 공식 측정
+└── 1 VU, 60초, 3회
+
+목표 부하 공식 측정
+└── constant-arrival-rate 50 RPS, 60초, pre-allocated VUs 50, 3회
+```
+
+단일 사용자 시나리오는 요청 적체가 거의 없는 기본 지연 시간을 확인하고,
+constant-arrival-rate 시나리오는 이전 요청의 완료와 관계없이 초당 50건을 시작하려고
+시도한다. 후자에서는 p50·p95·실제 처리량뿐 아니라 시작하지 못한 요청을 나타내는
+`dropped_iterations`도 함께 비교한다.
+
+측정 준비 파일은 다음과 같다.
+
+```text
+benchmark/postgresql/
+├── verify-canonical-dataset.sql
+├── verify-like-baseline-ready.sql
+├── prepare-like-baseline.sh
+├── start-like-baseline-app.sh
+├── explain-like-baseline.sql
+└── run-like-baseline-suite.sh
+```
+
+각 파일의 역할은 다음과 같다.
+
+| 파일 | 역할 |
+| --- | --- |
+| `verify-canonical-dataset.sql` | canonical 전체 건수·분포·무결성 검증 |
+| `verify-like-baseline-ready.sql` | DB·Flyway·통계·검색 확장 부재 확인 |
+| `prepare-like-baseline.sh` | checksum 확인, local 중지, benchmark 시작, canonical 전체 검증, `ANALYZE`, readiness 실행 |
+| `start-like-baseline-app.sh` | 고정 Java·JVM·profile로 애플리케이션 실행 |
+| `explain-like-baseline.sql` | 대표 LIKE 쿼리의 `ANALYZE, BUFFERS, WAL, SETTINGS` 실행 계획 수집 |
+| `run-like-baseline-suite.sh` | smoke, warm-up, 공식 반복 측정 및 결과 파일 저장 |
+
+부하 테스트 결과는 실행 시각별 디렉터리에 반복별 `.log`와 `.json`으로 저장하도록 했다.
+
+```text
+benchmark-data/postgresql/like-baseline/results/{timestamp}/
+├── smoke.log / smoke.json
+├── warmup.log / warmup.json
+├── single-user-1..3.log / .json
+└── arrival-rate-1..3.log / .json
+```
+
+현재 JAR로 애플리케이션을 부팅해 Java 21, benchmark profile, PostgreSQL 18.4 연결,
+Flyway V1 및 Hibernate validate를 다시 확인했다. Actuator health는 HTTP 200이었고 k6
+smoke의 다음 조건이 모두 통과했다.
+
+```text
+HTTP 200
+JSON 응답
+게시글 10건
+has_next=true와 next_cursor 존재
+checks: 4/4
+HTTP failures: 0
+```
+
+smoke의 단발 지연 시간은 JVM, DispatcherServlet 및 캐시 초기화의 영향을 받으므로 공식
+성능 결과로 사용하지 않는다. `EXPLAIN ANALYZE`, 1 VU 3회 및 50 RPS 3회는 아직
+실행하지 않았다.
+
+### 5.5. 1-4 전체 역검증 결과
+
+1-4-A부터 D까지의 체크포인트를 실제 DB, dump, 테스트 결과 및 실행 파일에서 다시
+확인했다.
+
+| 구분 | 역검증 체크포인트 | 결과 |
+| --- | --- | --- |
+| A | 고정 generator 설정으로 10만 건 canonical 데이터가 생성됐는가 | 통과 |
+| A | 건수·작성자·삭제·marker·본문 길이 분포가 기대값과 일치하는가 | 통과 |
+| A | 기본값·필수값·관계 무결성이 유지되는가 | 통과 |
+| B | dump checksum이 기록값과 일치하는가 | 통과 |
+| B | 빈 Flyway V1 DB에 data-only dump가 오류 없이 복원되는가 | 통과 |
+| B | 원본·복원본 전체 컬럼 fingerprint와 sequence가 같은가 | 통과 |
+| B | 복원 후 `ANALYZE`와 전체 canonical 검증이 성공하는가 | 통과 |
+| C | local·benchmark DB, port 및 volume이 분리됐는가 | 통과 |
+| C | 전체 137개 테스트와 boot JAR 생성이 성공하는가 | 통과 |
+| C | 테스트·재시작 전후 canonical 데이터가 변하지 않는가 | 통과 |
+| C | Testcontainers가 종료 후 정리되는가 | 통과 |
+| D | Java·JVM·Hikari·PostgreSQL·k6 조건이 고정됐는가 | 통과 |
+| D | LIKE 외 검색 확장 구조가 없는가 | 통과 |
+| D | readiness, 부팅, health 및 smoke가 성공하는가 | 통과 |
+| D | 실행 계획과 반복 부하 테스트 및 결과 저장 경로가 준비됐는가 | 통과 |
+| D | 공식 LIKE 성능 수치를 아직 기준선 결과로 기록하지 않았는가 | 통과 |
+
+따라서 PostgreSQL 이전, canonical 데이터 재현성, 전체 회귀 및 LIKE 기준선 측정 준비를
+포함한 1단계를 완료했다.
+
+## 6. 현재 상태와 다음 작업
+
+### 6.1. PostgreSQL 이전 완료 상태
+
+```text
+1. PostgreSQL 이전 기반
+├── 1-1. 이전 정책과 환경 설계
+├── 1-2. Compose·Flyway V1·sequence 기반 구축
+├── 1-3. 기존 기능과 benchmark 데이터 동등성 검증
+└── 1-4. canonical dump·restore·전체 회귀·LIKE 측정 준비
+```
+
+현재 검색 구현은 기존 JPA `LOWER(column) LIKE '%keyword%'`를 유지한다. PostgreSQL
+환경과 재현 가능한 데이터셋은 완성됐지만 PostgreSQL LIKE의 공식 성능 기준선은 아직
+측정하지 않았다. `pg_trgm`과 Full Text Search도 적용하지 않았다.
+
+### 6.2. 다음 단계의 경계
+
+다음 단계는 `2. PostgreSQL LIKE 기준선 측정`이다.
+
+1. 공식 측정 직전 Git 상태와 파일 hash를 measurement manifest에 확정한다.
+2. canonical checksum, readiness 및 `ANALYZE`를 다시 확인한다.
+3. 대표 LIKE 쿼리의 `EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS)`를 수집한다.
+4. smoke와 30초 warm-up 후 1 VU 60초 측정을 3회 실행한다.
+5. 50 RPS 60초 측정을 3회 실행한다.
+6. 반복별 p50·p95·처리량·실패·`dropped_iterations`를 정리하고 대표값을 확정한다.
+
+LIKE 기준선을 확정한 이후에만 같은 canonical dump와 실행 조건으로 `pg_trgm` 및 Full
+Text Search 실험을 진행한다.
+
+## 7. 2. PostgreSQL LIKE 기준선 측정
+
+PostgreSQL 이전만 완료한 V1 상태에서 기존 JPA
+`LOWER(column) LIKE '%keyword%'` 검색의 실행 계획과 애플리케이션 성능을 공식
+기준선으로 측정한다. 이 단계에서는 `pg_trgm`, `tsvector` 또는 검색 후보 인덱스를
+추가하지 않는다.
+
+측정은 다음 세 단계로 진행한다.
+
+| 단계 | 내용 | 상태 |
+| --- | --- | --- |
+| 2-1 | 측정 상태 확정과 LIKE 실행 계획 분석 | 완료 |
+| 2-2 | 단일 사용자·50 RPS 공식 성능 측정 | 진행 전 |
+| 2-3 | 결과 분석과 PostgreSQL LIKE 기준선 확정 | 진행 전 |
+
+### 7.1. 2-1. 측정 상태 확정과 LIKE 실행 계획 분석
+
+#### 2-1-A. 공식 측정 대상 상태 확정
+
+1-4-D에서는 측정 절차와 도구가 실행 가능한지 검증했다. 2-1-A에서는 그 도구로 실제
+공식 측정에 사용할 소스, JAR, 데이터, PostgreSQL 및 k6 상태를 하나의 snapshot으로
+고정했다.
+
+##### 소스 snapshot
+
+공식 측정 대상의 Git 기준은 다음과 같다.
+
+```text
+branch: feature/postgresql-search
+Git HEAD: 473c646a317936583dfa9dd179c36e3558bbd792
+Git tree: c336993d6afcc84f85496befab4c8ebe24aaa418
+```
+
+현재 작업 트리에 미커밋 파일이 있지만 역할을 구분했다.
+
+```text
+애플리케이션 runtime 소스
+└── Git HEAD와 차이 없음
+
+측정 절차 변경
+├── benchmark/postgresql/prepare-like-baseline.sh
+└── benchmark/postgresql/verify-canonical-dataset.sql
+
+측정 결과에 영향을 주지 않는 변경
+├── docs/postgresql-search-evolution.md
+├── .gitignore
+└── .DS_Store
+```
+
+측정 절차 변경 두 개는 measurement manifest에 개별 SHA-256을 기록했다. 따라서 공식
+측정 대상은 `Git HEAD + 측정 절차 파일 hash`로 식별한다. 문서와 결과 파일 외의 대상이
+변경되면 snapshot은 무효이며 2-1-A를 다시 수행한다.
+
+##### 빌드와 애플리케이션 artifact
+
+이전 Gradle 결과를 재사용하지 않고 다음 명령을 실행했다.
+
+```bash
+./gradlew test postgresIntegrationTest bootJar --rerun-tasks
+```
+
+```text
+Gradle tasks: 10개 실제 실행
+빠른 테스트: 124개, 실패·오류·skip 0
+PostgreSQL 통합 테스트: 13개, 실패·오류·skip 0
+결과: BUILD SUCCESSFUL
+```
+
+공식 측정에 사용할 JAR는 다음 하나로 고정했다.
+
+```text
+file: build/libs/community-0.0.1-SNAPSHOT.jar
+SHA-256: 5db7f0045bc2da093291978e65b17f729813df6af965f214fc224e1966fbeccb
+Java runtime: Eclipse Temurin 21.0.11
+JVM heap: -Xms1g -Xmx1g
+Spring profile: benchmark
+server port: 18084
+generator: disabled
+Hikari pool: minimum 10, maximum 10
+```
+
+Gradle launcher는 Java 26을 사용하지만 프로젝트 toolchain과 공식 애플리케이션 runtime은
+Java 21이다. 성능 측정 대상 JVM은 `start-like-baseline-app.sh`가 선택하는 Java
+21.0.11이다.
+
+##### 호스트와 Docker 조건
+
+성능 수치가 생성되는 실행 환경도 snapshot에 포함했다.
+
+```text
+host model: Mac14,9
+host memory: 16 GiB
+host logical CPUs: 10
+host OS: macOS 15.7.2, arm64
+
+Docker Desktop server: 29.6.2
+Docker CPUs: 10
+Docker memory: 8,321,515,520 bytes
+Docker architecture: aarch64
+```
+
+공식 비교에서 LIKE, `pg_trgm` 및 FTS는 같은 호스트와 Docker 자원 조건을 사용한다.
+
+##### PostgreSQL과 canonical 데이터
+
+`prepare-like-baseline.sh`를 실행해 checksum, canonical 전체 분포, `ANALYZE` 및
+readiness를 다시 검증했다.
+
+```text
+PostgreSQL image: postgres:18.4
+image ID: sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+platform: linux/arm64
+database: community_benchmark
+host port: 127.0.0.1:5433
+volume: community-postgres-benchmark-data
+health: healthy
+```
+
+```text
+users: 100
+posts: 100,000
+active posts: 95,000
+deleted posts: 5,000
+COMMON matches: 9,500
+users fingerprint: 157df43f62ff3ef7274e75a4c58e7df2
+posts fingerprint: ae5472e5c84907730a6a4a46ce50f811
+canonical verification: 통과
+dump checksum: 통과
+ANALYZE: 완료
+```
+
+확장은 `plpgsql`만 존재했다. `pg_trgm`, `tsvector` 및 검색 함수 인덱스는 없다.
+`posts`의 인덱스는 V1에 확정된 다음 세 개뿐이다.
+
+```text
+pk_posts
+idx_posts_user_id
+idx_posts_active_cursor
+```
+
+따라서 `LOWER(title)` 또는 `LOWER(content)`의 문자열 검색을 직접 지원하는 인덱스가 없는
+PostgreSQL LIKE 기준 상태다.
+
+##### k6와 요청 조건
+
+```text
+k6: 2.1.0, linux/arm64
+image: grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa
+request: GET /posts?keyword=qzcommona91x&scope=all&size=10
+```
+
+현재 JAR를 고정 조건으로 부팅한 뒤 Actuator health와 k6 smoke를 다시 실행했다.
+
+```text
+Actuator health: HTTP 200
+smoke checks: 4/4
+HTTP failures: 0/1
+결과: 게시글 10건, has_next=true, next_cursor 존재
+```
+
+smoke의 지연 시간은 공식 성능 결과로 사용하지 않는다.
+
+##### Measurement manifest
+
+최종 snapshot은 Git에서 추적하지 않는 다음 파일에 기록했다.
+
+```text
+benchmark-data/postgresql/like-baseline/measurement-manifest.txt
+SHA-256: d4a52b5b7832fdb0094cc4ffb224d4f4fae4646b61930d05dd158ac39d242a4e
+```
+
+manifest에는 Git, JAR, 주요 소스와 측정 파일 hash, 호스트, Docker, PostgreSQL 설정,
+canonical fingerprint, k6 및 부하 조건이 포함된다. 별도의 `.sha256` 파일로 manifest
+자체의 변경 여부도 확인한다.
+
+2-1-A 이후 허용되는 변경은 결과 파일과 문서뿐이다. 다음 항목이 바뀌면 2-1-B 또는
+2-2 결과와 같은 기준선으로 취급하지 않고 2-1-A부터 다시 검증한다.
+
+```text
+Git HEAD
+애플리케이션 JAR hash
+canonical fingerprint
+PostgreSQL image 또는 설정
+k6 image 또는 script
+대표 실행 계획 SQL
+검색어·범위·응답 크기
+warm-up·반복·부하 조건
+```
+
+##### 2-1-A 완료 체크포인트
+
+- 애플리케이션 runtime 소스가 Git HEAD와 일치한다.
+- 측정 절차의 미커밋 변경을 개별 hash로 고정했다.
+- 전체 137개 테스트와 boot JAR 재생성이 성공했다.
+- 공식 JAR와 Java·JVM·Spring·Hikari 조건을 확정했다.
+- 호스트와 Docker 자원 조건을 기록했다.
+- PostgreSQL image, database, port 및 volume을 확정했다.
+- canonical dump checksum, 전체 분포 및 fingerprint 검증을 통과했다.
+- `ANALYZE`와 PostgreSQL 주요 설정을 확인했다.
+- LIKE 외 검색 확장과 검색 함수 인덱스가 없음을 확인했다.
+- k6 image와 세 측정 script의 hash를 확정했다.
+- health와 smoke의 응답 계약을 확인했다.
+- measurement manifest와 checksum을 생성했다.
+- 공식 `EXPLAIN ANALYZE`와 부하 측정은 아직 실행하지 않았다.
+
+따라서 공식 LIKE 실행 계획을 수집할 측정 대상 상태를 확정했다.
+
+#### 2-1-B. 대표 LIKE 쿼리 실행 계획 수집
+
+PostgreSQL이 기존 `LOWER(column) LIKE '%keyword%'` 검색을 처리하는 방식을 확인하기
+위해 첫 페이지 검색과 의미상 동일한 대표 SQL의 실행 계획을 수집했다. 직접 실행한 SQL은
+Hibernate가 생성한 SQL 문자열 자체가 아니라 조인, 검색 조건, 정렬 및 11건 제한을 같은
+의미로 표현한 SQL이다.
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS)
+SELECT p.*, u.*
+FROM posts p
+JOIN users u ON u.user_id = p.user_id
+WHERE p.deleted_at IS NULL
+  AND (
+      LOWER(p.title) LIKE '%qzcommona91x%' ESCAPE '\'
+      OR LOWER(p.content) LIKE '%qzcommona91x%' ESCAPE '\'
+  )
+ORDER BY p.post_id DESC
+FETCH FIRST 11 ROWS ONLY;
+```
+
+공식 snapshot과 canonical readiness를 다시 확인한 뒤 같은 SQL을 warm-cache 조건에서
+3회 순차 실행했다. 세 실행은 모두 같은 plan shape를 사용했다.
+
+```text
+Limit
+└── Nested Loop
+    ├── Index Scan Backward using pk_posts
+    │   └── deleted_at과 LIKE 조건을 Filter로 평가
+    │
+    └── Materialize
+        └── Seq Scan on users
+```
+
+| 실행 | Planning Time | Execution Time | 상위 실행 buffer | posts filter 제거 |
+| --- | ---: | ---: | --- | ---: |
+| 1회 | 1.139ms | 2.958ms | hit 81, read 1 | 96 |
+| 2회 | 0.753ms | 1.935ms | hit 82 | 96 |
+| 3회 | 0.393ms | 1.794ms | hit 82 | 96 |
+| 중앙값 | 0.753ms | 1.935ms | - | 96 |
+
+Execution Time은 PostgreSQL 내부 SQL 실행 시간이다. HTTP, Spring MVC, Hibernate,
+JDBC, DTO 변환 및 JSON 직렬화 비용이 없으므로 API 응답 시간이나 부하 성능 결과로
+사용하지 않는다.
+
+실행 전후 데이터는 동일했다.
+
+```text
+users: 100
+posts: 100,000
+active posts: 95,000
+deleted posts: 5,000
+COMMON matches: 9,500
+posts fingerprint: ae5472e5c84907730a6a4a46ce50f811
+```
+
+원본은 다음 디렉터리에 보존하고 파일별 SHA-256을 검증했다.
+
+```text
+benchmark-data/postgresql/like-baseline/explain/
+└── postgresql-like-baseline-20260804-155324-kst/
+    ├── before-state.log
+    ├── explain-run-1.log
+    ├── explain-run-2.log
+    ├── explain-run-3.log
+    ├── after-state.log
+    └── SHA256SUMS
+```
+
+#### 2-1-C. 실행 계획 분석과 측정 전 최종 판정
+
+##### 게시글 접근과 정렬
+
+PostgreSQL은 `posts` 전체 순차 스캔을 선택하지 않았다. 기본키 B-tree인 `pk_posts`를
+역방향으로 스캔해 `ORDER BY post_id DESC` 순서를 바로 만들었다.
+
+```text
+Index Scan Backward using pk_posts
+    ↓
+최신 post_id부터 조회
+    ↓
+deleted_at과 LIKE Filter 평가
+    ↓
+11건을 찾으면 Limit에서 종료
+```
+
+인덱스에서 이미 필요한 정렬 순서로 행을 읽으므로 별도의 `Sort` 노드는 없다.
+`idx_posts_active_cursor`도 최신 활성 게시글 조회를 지원할 수 있지만 이번 계획에서는
+선택되지 않았고 `pk_posts`에서 삭제 여부까지 Filter로 확인했다.
+
+##### LIKE 조건과 조기 종료
+
+LIKE 조건은 `Index Cond`가 아니라 다음 `Filter`로 나타났다.
+
+```text
+lower(title) LIKE '%qzcommona91x%'
+OR lower(content) LIKE '%qzcommona91x%'
+```
+
+이는 `pk_posts`가 LIKE 일치 위치를 찾아 주는 것이 아니라, 기본키 순서로 가져온 각 행에
+대해 PostgreSQL이 제목과 본문을 소문자로 변환하고 문자열 포함 여부를 검사한다는
+의미다.
+
+이번 실행에서는 반환 11건 외에 96건이 Filter에서 제거됐다. 따라서 최신순으로 약
+107건의 게시글 조건을 평가한 시점에 필요한 11건을 찾고 종료했다.
+
+```text
+평가한 게시글: 약 107건
+├── LIKE 일치 후 반환: 11건
+└── 삭제 또는 LIKE 불일치로 제거: 96건
+```
+
+전체 10만 건을 평가하지 않은 이유는 COMMON marker가 활성 게시글 10개마다 하나씩
+분포하고, 첫 페이지에서 11건만 필요하기 때문이다. 이는 일반적인 선행 와일드카드 LIKE가
+인덱스로 검색어를 찾았다는 의미가 아니다. `LIMIT`와 현재 데이터 분포가 최신 영역에서
+빠른 조기 종료를 가능하게 한 것이다.
+
+따라서 다음 조건에서는 훨씬 더 많은 게시글을 확인할 수 있다.
+
+```text
+일치 빈도가 낮은 검색어
+일치 결과가 없는 검색어
+깊은 cursor 페이지
+최신 게시글 구간에 결과가 적은 데이터 분포
+```
+
+2-2의 공식 기준선은 계획대로 `COMMON + all + 첫 페이지` 조건을 측정한다. 결과를 모든
+검색어와 페이지 위치의 일반 성능으로 확대 해석하지 않는다. 이후 `pg_trgm`과 FTS도
+동일한 조건을 사용해 비교한다.
+
+##### 예상 행 수와 실제 분포
+
+`posts` Index Scan에서 PostgreSQL의 예상 일치 행은 19건이었다. Canonical 데이터의
+실제 COMMON 일치 건수는 9,500건이므로 약 500배의 과소 추정이다.
+
+```text
+planner 예상: 19건
+canonical 실제 전체 일치: 9,500건
+차이: 약 500배
+```
+
+실행 계획의 actual rows는 `LIMIT` 때문에 11건에서 중단됐으므로 9,500건을 직접 세어
+표시하지 않는다. 실제 전체 일치 수는 별도 canonical 검증 쿼리로 확인했다.
+
+PostgreSQL은 일반 컬럼 통계만으로 `LOWER(column) LIKE '%keyword%'` 안의 임의 부분
+문자열 분포를 정확히 알기 어렵다. 이 선택도 추정 오차 때문에 `Limit`의 예상 비용은
+`11376.40`까지 표시됐지만 실제로는 높은 marker 빈도 덕분에 적은 행을 확인하고
+종료했다. 실행 계획의 cost는 옵티마이저가 계획끼리 비교하기 위한 상대 단위이며 ms가
+아니다.
+
+##### 작성자 조인
+
+게시글과 작성자는 `Nested Loop`로 조인했다. 사용자 100명을 한 번 순차 스캔해 약
+30kB의 메모리에 `Materialize`하고, 선택된 게시글마다 작성자 ID가 일치할 때까지 이 작은
+결과를 재사용했다.
+
+```text
+Seq Scan on users
+└── 100명
+
+Materialize
+└── 최대 30kB
+
+Rows Removed by Join Filter
+└── 603건
+```
+
+현재 사용자가 100명으로 작아 조인 쪽 buffer는 2개였으며, 이번 대표 계획의 주된 검색
+비용은 게시글 행마다 LIKE Filter를 평가하는 부분이다.
+
+##### Buffer, WAL 및 반복 차이
+
+첫 실행의 상위 실행 buffer는 `shared hit=81 read=1`, 이후 두 실행은 `shared hit=82`였다.
+첫 실행에서 읽은 1개 블록이 다음 실행부터 shared buffer에서 재사용됐다. 준비 단계의
+canonical 검증과 `ANALYZE`가 이미 데이터를 읽었으므로 첫 실행도 완전한 cold-cache
+조건은 아니다.
+
+읽기 전용 SELECT이므로 보고할 WAL 활동이 없었고, 세션에서 실행 계획 관련 설정을
+별도로 변경하지 않아 `SETTINGS` 항목도 출력되지 않았다.
+
+##### 2-2 진행 판정
+
+2-1의 최종 체크포인트는 모두 통과했다.
+
+- 공식 소스, JAR, DB, canonical 데이터 및 k6 조건을 snapshot으로 고정했다.
+- LIKE 외 검색 확장과 검색 함수 인덱스가 없는 상태를 확인했다.
+- 대표 SQL의 실행 계획을 같은 조건으로 3회 수집했다.
+- 세 실행에서 동일한 plan shape를 확인했다.
+- 원본 계획과 실행 전후 상태 및 SHA-256을 보존했다.
+- 실행 전후 canonical 건수와 fingerprint가 동일했다.
+- COMMON 첫 페이지와 warm-cache라는 결과 해석 범위를 명시했다.
+- DB 내부 실행 시간과 API 응답 시간을 구분했다.
+- 애플리케이션 부하 측정을 막는 이상 상태가 없다.
+
+따라서 2-2의 단일 사용자 및 50 RPS 공식 성능 측정을 시작할 수 있다고 판정했다.
