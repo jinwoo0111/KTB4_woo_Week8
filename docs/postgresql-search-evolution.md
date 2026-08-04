@@ -1532,7 +1532,7 @@ PostgreSQL 이전만 완료한 V1 상태에서 기존 JPA
 | 단계 | 내용 | 상태 |
 | --- | --- | --- |
 | 2-1 | 측정 상태 확정과 LIKE 실행 계획 분석 | 완료 |
-| 2-2 | 단일 사용자·50 RPS 공식 성능 측정 | 진행 전 |
+| 2-2 | 단일 사용자·50 RPS 공식 성능 측정 | 완료 |
 | 2-3 | 결과 분석과 PostgreSQL LIKE 기준선 확정 | 진행 전 |
 
 ### 7.1. 2-1. 측정 상태 확정과 LIKE 실행 계획 분석
@@ -1922,3 +1922,217 @@ canonical 검증과 `ANALYZE`가 이미 데이터를 읽었으므로 첫 실행�
 - 애플리케이션 부하 측정을 막는 이상 상태가 없다.
 
 따라서 2-2의 단일 사용자 및 50 RPS 공식 성능 측정을 시작할 수 있다고 판정했다.
+
+### 7.2. 2-2. 단일 사용자·50 RPS 공식 성능 측정
+
+2-1에서 분석한 PostgreSQL LIKE 상태를 애플리케이션 전체 경로에서 측정했다. 공식
+요청에는 HTTP, Spring MVC, Hibernate, JDBC, PostgreSQL 실행, DTO 변환 및 JSON
+직렬화 비용이 모두 포함된다.
+
+```text
+GET /posts?keyword=qzcommona91x&scope=all&size=10
+```
+
+각 요청에서는 성능 지표와 함께 다음 응답 계약을 검증했다.
+
+```text
+HTTP status: 200
+응답 형식: JSON
+반환 게시글: 10건
+has_next: true
+next_cursor: 존재
+```
+
+#### 2-2-A. 단일 사용자 공식 성능 측정
+
+##### 측정 snapshot 재확정
+
+2-1 이후 Git HEAD가 변경되어 부하 실행 전에 변경 범위를 확인했다.
+
+```text
+2-1 snapshot HEAD: 473c646a317936583dfa9dd179c36e3558bbd792
+2-2 측정 HEAD: e7dcdb785a578ada61f1077fc2cca90b0e08d04f
+2-2 측정 tree: dd8fc8d0b95e5524442d74fba9ca69ff0eb821f2
+```
+
+변경은 문서, Git 제외 설정 및 canonical 검증 절차에 해당했다. 애플리케이션 JAR와
+단일 사용자 k6 script의 SHA-256은 2-1 snapshot과 동일했다.
+
+```text
+application JAR:
+5db7f0045bc2da093291978e65b17f729813df6af965f214fc224e1966fbeccb
+
+k6 single-user script:
+fc9fce9a4b9d6c5b5b9fc044226a68fc02385080a1749215059304e61cbca87a
+```
+
+따라서 runtime 동등성을 확인한 현재 HEAD를 단일 사용자 측정용 manifest로 다시
+고정했다.
+
+```text
+measurement ID: postgresql-like-single-user-20260804-164537-kst
+manifest: benchmark-data/postgresql/like-baseline/single-user-measurement-manifest.txt
+manifest SHA-256: 39871d5c5a9f51507b4ae10ee9263e2044b7b6a14b24ba9dd2611b6ddd4d1950
+```
+
+##### 실행 조건
+
+```text
+smoke: 1 VU, 1 iteration
+warm-up: 1 VU, 30초
+공식 측정: 1 VU, 60초, 3회
+```
+
+Smoke의 네 응답 계약은 모두 통과했다. Warm-up에서는 5,723건을 실행했고 오류와 기능
+검증 실패는 없었다. Warm-up 수치는 공식 결과에 포함하지 않는다.
+
+##### 측정 결과
+
+| 실행 | 요청 수 | 실제 처리량 | 평균 | p50 | p95 | p99 | 최대 | HTTP 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 11,080 | 184.66 RPS | 4.70ms | 4.15ms | 7.40ms | 12.56ms | 157.43ms | 0 |
+| 2회 | 12,543 | 209.04 RPS | 4.15ms | 3.96ms | 5.83ms | 8.04ms | 79.85ms | 0 |
+| 3회 | 8,408 | 140.13 RPS | 4.13ms | 3.96ms | 5.63ms | 7.68ms | 36.28ms | 0 |
+| 실행별 요약값의 중앙값 | 11,080 | 184.66 RPS | 4.15ms | 3.96ms | 5.83ms | 8.04ms | - | 0 |
+
+마지막 행은 세 실행의 전체 요청을 합쳐 percentile을 다시 계산한 값이 아니다. 각
+실행에서 계산한 요약값 세 개의 중앙값이다.
+
+세 실행의 총 HTTP 요청 32,031건과 요청당 네 개의 기능 검사 128,124건은 모두
+성공했다.
+
+##### 3회차 측정 환경 이상 신호
+
+3회차의 HTTP 최대 응답 시간은 36.28ms였지만 `iteration_duration` 최대값은 약
+19.67초였다.
+
+```text
+HTTP 최대 응답 시간: 36.28ms
+iteration_duration 최대: 19,670.88ms
+```
+
+HTTP 요청 자체가 19초 동안 처리된 것은 아니다. k6 프로세스 또는 Docker·호스트
+스케줄링이 일시 정지한 신호로 판단했다. 이로 인해 3회차의 요청 수와 RPS가 감소했다.
+해당 실행을 사후 제거하지 않고 원본과 결과에 그대로 보존했으며, 한 번의 정지가 대표
+요약에 미치는 영향을 제한하기 위해 실행별 결과의 중앙값을 함께 기록했다.
+
+#### 2-2-B. 50 RPS 공식 성능 측정
+
+##### Arrival-rate 조건
+
+단일 사용자 측정은 한 요청이 끝난 뒤 다음 요청을 보내는 closed model이다. 목표 부하
+측정은 응답 완료 여부와 독립적으로 초당 50개의 요청 시작을 예약하는 다음 open model을
+사용했다.
+
+```text
+executor: constant-arrival-rate
+target rate: 50 iterations/s
+time unit: 1초
+duration: 60초
+pre-allocated VUs: 50
+graceful stop: 10초
+공식 반복: 3회
+```
+
+공식 실행 전 snapshot을 다시 확인하고 별도 manifest로 고정했다.
+
+```text
+measurement ID: postgresql-like-50rps-20260804-201108-kst
+manifest: benchmark-data/postgresql/like-baseline/arrival-rate-measurement-manifest.txt
+manifest SHA-256: 9ff6ac1693764b8a1e1ed179f973fda6f4a1a38bc615c07551c8f408ac21cc0d
+
+k6 arrival-rate script SHA-256:
+b16e3615bfe8ecdfda4465a6814566644c7daa9b2d867c85b626a75071ded8e6
+```
+
+Canonical 검증과 `ANALYZE`, 애플리케이션 health, smoke 및 1 VU 30초 warm-up을 다시
+실행했다. Warm-up은 5,397건, p50 4.24ms, p95 7.57ms였으며 오류와 기능 검증 실패는
+없었다. 이 수치는 공식 50 RPS 결과에 포함하지 않는다.
+
+##### 측정 결과
+
+| 실행 | 완료 요청 | 실제 처리량 | 미시작 요청 | 평균 | p50 | p95 | p99 | 최대 | HTTP 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 3,001 | 50.005 RPS | 0 | 6.82ms | 6.19ms | 9.68ms | 18.01ms | 98.59ms | 0 |
+| 2회 | 3,000 | 49.998 RPS | 0 | 6.81ms | 6.17ms | 9.44ms | 20.88ms | 132.77ms | 0 |
+| 3회 | 3,000 | 49.999 RPS | 0 | 6.66ms | 6.02ms | 9.28ms | 17.69ms | 119.06ms | 0 |
+| 실행별 요약값의 중앙값 | 3,000 | 49.999 RPS | 0 | 6.81ms | 6.17ms | 9.44ms | 18.01ms | 119.06ms | 0 |
+
+60초와 50 RPS의 이론적인 예약 수는 3,000건이다. 1회차의 3,001건은 시간 경계의
+스케줄링 차이이며 누락이 아니다. 세 실행 모두 `dropped_iterations=0`이고 실제 처리량은
+목표인 50 RPS를 유지했다.
+
+세 실행에서 총 9,001건의 요청과 36,004개의 기능 검사가 모두 성공했다. 준비한 VU는
+50개였지만 실제 동시 활성 VU 최대값은 각 실행에서 7개, 1개, 1개였다. 현재 응답
+시간에서는 목표 요청률을 만들기 위해 50개의 동시 실행이 필요하지 않았다는 의미다.
+
+#### 측정 전후 데이터와 원본 검증
+
+두 측정은 각각 실행 전후 canonical 검증 SQL을 실행했다. 모든 검증에서 다음 상태가
+유지됐다.
+
+```text
+users: 100
+posts: 100,000
+active posts: 95,000
+deleted posts: 5,000
+posts per author: 최소 1,000, 최대 1,000
+
+COMMON: 9,500
+MEDIUM: 950
+RARE: 95
+FIXED: 10
+SCOPE title: 950
+SCOPE content: 950
+
+content length 300~799: 60,000
+content length 800~1,999: 30,000
+content length 2,000~7,999: 9,000
+content length 8,000~15,999: 0
+content length 16,000~32,000: 1,000
+```
+
+원본 결과는 다음 두 디렉터리에 저장했다.
+
+```text
+benchmark-data/postgresql/like-baseline/results/
+├── postgresql-like-single-user-20260804-164537-kst/
+│   ├── before-state.log
+│   ├── smoke.log, smoke.json
+│   ├── warmup.log, warmup.json
+│   ├── single-user-1~3.log
+│   ├── single-user-1~3.json
+│   ├── after-state.log
+│   └── SHA256SUMS
+│
+└── postgresql-like-50rps-20260804-201108-kst/
+    ├── before-state.log
+    ├── smoke.log, smoke.json
+    ├── warmup.log, warmup.json
+    ├── arrival-rate-1~3.log
+    ├── arrival-rate-1~3.json
+    ├── after-state.log
+    └── SHA256SUMS
+```
+
+두 디렉터리의 모든 측정 원본과 두 measurement manifest의 SHA-256 재검증이 통과했다.
+측정 종료 후 애플리케이션은 graceful shutdown으로 종료했고 benchmark PostgreSQL과 k6
+컨테이너가 남아 있지 않음을 확인했다.
+
+#### 2-2 전체 역검증 결과
+
+- 공식 JAR, PostgreSQL, canonical 데이터, k6 image 및 요청 조건이 snapshot과 일치했다.
+- 단일 사용자와 50 RPS 측정 전에 health, smoke 및 warm-up을 통과했다.
+- 단일 사용자 1 VU 60초 측정을 3회 완료했다.
+- constant-arrival-rate 50 RPS 60초 측정을 3회 완료했다.
+- 모든 HTTP 요청과 기능 검사가 성공했다.
+- 50 RPS 세 실행에서 시작하지 못한 요청은 0건이었다.
+- 측정 전후 canonical 건수, marker 및 본문 길이 분포가 일치했다.
+- 두 manifest와 모든 원본 결과의 SHA-256 검증을 통과했다.
+- 단일 사용자 3회차의 부하 생성기 정지 신호를 숨기지 않고 기록했다.
+- 실행 프로세스와 컨테이너를 정상 종료했다.
+- 측정 결과에 영향을 주는 추적 대상 코드 변경은 발생하지 않았다.
+
+따라서 PostgreSQL LIKE의 단일 사용자 및 목표 50 RPS 공식 성능 측정은 완료됐다. H2
+기준선과의 정량 비교, 실행 계획과 API 지연 시간의 관계 및 PostgreSQL LIKE 기준선의
+최종 해석은 2-3에서 진행한다.
