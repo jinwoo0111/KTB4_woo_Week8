@@ -1,0 +1,62 @@
+services:
+  postgres-local:
+    image: postgres:18.4
+    profiles:
+      - local
+    environment:
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-community}
+      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-community_local}
+      # The active PostgreSQL container rejects an empty password during init.
+      # A blank default keeps an inactive Compose profile from blocking interpolation.
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-}
+      POSTGRES_INITDB_ARGS: >-
+        --encoding=UTF8
+        --locale-provider=builtin
+        --builtin-locale=PG_UNICODE_FAST
+    ports:
+      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+
+  postgres-benchmark:
+    image: postgres:18.4
+    profiles:
+      - benchmark
+    environment:
+      POSTGRES_DB: ${BENCHMARK_POSTGRES_DB:-community_benchmark}
+      POSTGRES_USER: ${BENCHMARK_POSTGRES_USER:-community_benchmark}
+      # The active PostgreSQL container rejects an empty password during init.
+      # A blank default keeps an inactive Compose profile from blocking interpolation.
+      POSTGRES_PASSWORD: ${BENCHMARK_POSTGRES_PASSWORD:-}
+      POSTGRES_INITDB_ARGS: >-
+        --encoding=UTF8
+        --locale-provider=builtin
+        --builtin-locale=PG_UNICODE_FAST
+    ports:
+      - "127.0.0.1:${BENCHMARK_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-benchmark-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+
+volumes:
+  postgres-local-data:
+    name: community-postgres-local-data
+  postgres-benchmark-data:
+    name: community-postgres-benchmark-data
