@@ -19,7 +19,7 @@ RUN addgroup -S spring && adduser -S spring -G spring
 
 WORKDIR /app
 
-RUN mkdir -p /app/data /app/uploads \
+RUN mkdir -p /app/uploads \
 	&& chown -R spring:spring /app
 
 COPY --from=builder --chown=spring:spring \
@@ -29,7 +29,6 @@ COPY --from=builder --chown=spring:spring \
 ENV SPRING_PROFILES_ACTIVE=prod \
     SERVER_ADDRESS=0.0.0.0 \
     SERVER_PORT=8080 \
-    DB_PATH=/app/data/community \
     UPLOAD_PATH=/app/uploads
 
 USER spring

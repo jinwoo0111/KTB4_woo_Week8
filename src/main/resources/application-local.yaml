@@ -3,9 +3,10 @@ spring:
     activate:
       on-profile: local
 
-  h2:
-    console:
-      enabled: true
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:${LOCAL_POSTGRES_PORT:5432}/${LOCAL_POSTGRES_DB:community}
+    username: ${LOCAL_POSTGRES_USER:community_local}
+    password: ${LOCAL_POSTGRES_PASSWORD}
 
   jpa:
     show-sql: true

@@ -81,15 +81,12 @@ public class SecurityConfig {
                 .cors(cors -> cors
                         .configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
-                .headers(headers -> headers
-                        .frameOptions(frameOptions -> frameOptions.sameOrigin()))
                 .formLogin(form -> form.disable())
                 .httpBasic(httpBasic -> httpBasic.disable())
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
-                        .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/users/signup", "/users/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/posts", "/posts/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/posts/*/views").permitAll()

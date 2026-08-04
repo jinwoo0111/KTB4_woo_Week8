@@ -4,11 +4,9 @@ spring:
       on-profile: benchmark
 
   datasource:
-    url: jdbc:h2:file:${BENCHMARK_DB_PATH:./benchmark-data/community-benchmark}
-
-  h2:
-    console:
-      enabled: true
+    url: jdbc:postgresql://127.0.0.1:${BENCHMARK_POSTGRES_PORT:5433}/${BENCHMARK_POSTGRES_DB:community_benchmark}
+    username: ${BENCHMARK_POSTGRES_USER:community_benchmark}
+    password: ${BENCHMARK_POSTGRES_PASSWORD}
 
   jpa:
     show-sql: false
