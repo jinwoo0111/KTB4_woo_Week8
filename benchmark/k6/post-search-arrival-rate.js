@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 const rate = Number(__ENV.RATE || 50);
-const duration = __ENV.DURATION || '30s';
+const duration = __ENV.DURATION || '60s';
 const preAllocatedVUs = Number(__ENV.PREALLOCATED_VUS || 50);
 
 if (!Number.isInteger(rate) || rate <= 0) {
