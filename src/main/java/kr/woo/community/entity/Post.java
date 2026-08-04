@@ -12,7 +12,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class Post {
 
-    @Id @GeneratedValue
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "posts_seq_generator")
+    @SequenceGenerator(
+            name = "posts_seq_generator",
+            sequenceName = "posts_seq",
+            allocationSize = 50
+    )
     @Column(name = "post_id")
     private Long id;
 
@@ -29,13 +35,13 @@ public class Post {
     @JoinColumn(name = "user_id", nullable = false)
     private User author;
 
-    @Column(name = "like_count")
+    @Column(name = "like_count", nullable = false)
     private int likeCount;
 
-    @Column(name = "comment_count")
+    @Column(name = "comment_count", nullable = false)
     private int commentCount;
 
-    @Column(name = "view_count")
+    @Column(name = "view_count", nullable = false)
     private int viewCount;
 
     @Column(name = "created_at", nullable = false)

@@ -10,16 +10,28 @@ import java.util.List;
 
 // 회원 엔티티
 @Entity
-@Table(name = "users")
+@Table(
+        name = "users",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_users_email", columnNames = "email"),
+                @UniqueConstraint(name = "uk_users_nickname", columnNames = "nickname")
+        }
+)
 @Getter
 @NoArgsConstructor
 public class User {
 
-    @Id @GeneratedValue
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "users_seq_generator")
+    @SequenceGenerator(
+            name = "users_seq_generator",
+            sequenceName = "users_seq",
+            allocationSize = 50
+    )
     @Column(name = "user_id")
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String email;
 
     @Column(nullable = false)
