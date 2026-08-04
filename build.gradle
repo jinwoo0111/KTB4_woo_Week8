@@ -17,6 +17,18 @@ repositories {
 	mavenCentral()
 }
 
+sourceSets {
+	postgresIntegrationTest {
+		compileClasspath += sourceSets.main.output + sourceSets.test.output
+		runtimeClasspath += output + compileClasspath
+	}
+}
+
+configurations {
+	postgresIntegrationTestImplementation.extendsFrom testImplementation
+	postgresIntegrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -37,6 +49,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	postgresIntegrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	postgresIntegrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -45,4 +59,13 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.register('postgresIntegrationTest', Test) {
+	description = 'Runs integration tests against PostgreSQL 18.4 with Testcontainers.'
+	group = 'verification'
+	testClassesDirs = sourceSets.postgresIntegrationTest.output.classesDirs
+	classpath = sourceSets.postgresIntegrationTest.runtimeClasspath
+	useJUnitPlatform()
+	shouldRunAfter tasks.named('test')
 }
