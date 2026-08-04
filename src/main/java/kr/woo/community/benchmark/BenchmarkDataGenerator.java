@@ -23,7 +23,8 @@ import java.sql.SQLException;
 )
 public class BenchmarkDataGenerator implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkDataGenerator.class);
-    private static final String BENCHMARK_PATH_MARKER = "benchmark-data";
+    private static final String POSTGRESQL_PRODUCT_NAME = "PostgreSQL";
+    private static final String BENCHMARK_DATABASE_NAME = "community_benchmark";
 
     private final BenchmarkGeneratorProperties properties;
     private final DataSource dataSource;
@@ -47,13 +48,13 @@ public class BenchmarkDataGenerator implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws SQLException {
-        String databaseUrl = getDatabaseUrl();
+        DatabaseIdentity databaseIdentity = getDatabaseIdentity();
 
-        validateBenchmarkDatabase(databaseUrl);
+        validateBenchmarkDatabase(databaseIdentity);
         validateEmptyDatabase();
 
         log.info("Benchmark generator configuration validated");
-        log.info("Target database: {}", databaseUrl);
+        log.info("Target database: {}", databaseIdentity.url());
         log.info(
                 "postCount={}, authorCount={}, persistenceBatchSize={}, seed={}",
                 properties.postCount(),
@@ -75,16 +76,30 @@ public class BenchmarkDataGenerator implements ApplicationRunner {
         );
     }
 
-    private String getDatabaseUrl() throws SQLException {
+    private DatabaseIdentity getDatabaseIdentity() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
-            return connection.getMetaData().getURL();
+            return new DatabaseIdentity(
+                    connection.getMetaData().getDatabaseProductName(),
+                    connection.getCatalog(),
+                    connection.getMetaData().getURL()
+            );
         }
     }
 
-    private void validateBenchmarkDatabase(String databaseUrl) {
-        if (databaseUrl == null || !databaseUrl.contains(BENCHMARK_PATH_MARKER)) {
+    private void validateBenchmarkDatabase(DatabaseIdentity databaseIdentity) {
+        if (!POSTGRESQL_PRODUCT_NAME.equals(databaseIdentity.productName())) {
             throw new IllegalStateException(
-                    "Benchmark data generation is only allowed for a database under benchmark-data"
+                    "Benchmark data generation is only allowed on PostgreSQL: actual product="
+                            + databaseIdentity.productName()
+            );
+        }
+
+        if (!BENCHMARK_DATABASE_NAME.equals(databaseIdentity.databaseName())) {
+            throw new IllegalStateException(
+                    "Benchmark data generation is only allowed for database "
+                            + BENCHMARK_DATABASE_NAME
+                            + ": actual database="
+                            + databaseIdentity.databaseName()
             );
         }
     }
@@ -156,5 +171,12 @@ public class BenchmarkDataGenerator implements ApplicationRunner {
                             + actualAuthorCount
             );
         }
+    }
+
+    private record DatabaseIdentity(
+            String productName,
+            String databaseName,
+            String url
+    ) {
     }
 }
