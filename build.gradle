@@ -17,10 +17,22 @@ repositories {
 	mavenCentral()
 }
 
+sourceSets {
+	postgresIntegrationTest {
+		compileClasspath += sourceSets.main.output + sourceSets.test.output
+		runtimeClasspath += output + compileClasspath
+	}
+}
+
+configurations {
+	postgresIntegrationTestImplementation.extendsFrom testImplementation
+	postgresIntegrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-h2console'
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -29,18 +41,31 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
-	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	runtimeOnly 'org.postgresql:postgresql'
 	annotationProcessor 'org.projectlombok:lombok'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	postgresIntegrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	postgresIntegrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
 	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.register('postgresIntegrationTest', Test) {
+	description = 'Runs integration tests against PostgreSQL 18.4 with Testcontainers.'
+	group = 'verification'
+	testClassesDirs = sourceSets.postgresIntegrationTest.output.classesDirs
+	classpath = sourceSets.postgresIntegrationTest.runtimeClasspath
+	useJUnitPlatform()
+	shouldRunAfter tasks.named('test')
 }

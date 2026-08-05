@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 const rate = Number(__ENV.RATE || 50);
-const duration = __ENV.DURATION || '30s';
+const duration = __ENV.DURATION || '60s';
 const preAllocatedVUs = Number(__ENV.PREALLOCATED_VUS || 50);
 
 if (!Number.isInteger(rate) || rate <= 0) {
@@ -42,12 +42,14 @@ export const options = {
 export default function () {
     const baseUrl =
         __ENV.BASE_URL || 'http://host.docker.internal:18084';
+    const keyword = __ENV.KEYWORD || 'qzcommona91x';
+    const searchCase = __ENV.SEARCH_CASE || 'common_all';
 
     const response = http.get(
-        `${baseUrl}/posts?keyword=qzcommona91x&scope=all&size=10`,
+        `${baseUrl}/posts?keyword=${encodeURIComponent(keyword)}&scope=all&size=10`,
         {
             tags: {
-                search_case: 'common_all',
+                search_case: searchCase,
                 target_rps: String(rate),
             },
         },

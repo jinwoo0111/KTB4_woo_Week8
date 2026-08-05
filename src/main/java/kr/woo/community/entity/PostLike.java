@@ -7,12 +7,24 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "post_likes")
+@Table(
+        name = "post_likes",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_post_likes_post_user",
+                columnNames = {"post_id", "user_id"}
+        )
+)
 @Getter
 @NoArgsConstructor
 public class PostLike {
 
-    @Id @GeneratedValue
+    @Id
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "post_likes_seq_generator")
+    @SequenceGenerator(
+            name = "post_likes_seq_generator",
+            sequenceName = "post_likes_seq",
+            allocationSize = 50
+    )
     @Column(name = "post_like_id")
     private Long id;
 

@@ -15,6 +15,7 @@ import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.UserNotFoundException;
 import kr.woo.community.repository.PostLikeRepository;
 import kr.woo.community.repository.PostRepository;
+import kr.woo.community.repository.PostFtsSearchRepository;
 import kr.woo.community.repository.CommentRepository;
 import kr.woo.community.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.time.format.DateTimeFormatter;
 
@@ -34,10 +36,14 @@ import java.util.Locale;
 @Transactional(readOnly = true)
 public class PostService {
     private final PostRepository postRepository;
+    private final PostFtsSearchRepository postFtsSearchRepository;
     private final UserRepository userRepository;
     private final CommentRepository commentRepository;
     private final PostLikeRepository postLikeRepository;
     private final FileStorageService fileStorageService;
+
+    @Value("${app.search.mode:like}")
+    private String searchMode = "like";
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -116,29 +122,53 @@ public class PostService {
             posts = postRepository.findPostsByCursor(cursor, pageable);
         } else {
             String normalizedKeyword = normalizeKeyword(keyword);
-            String escapedKeyword = escapeLikeKeyword(normalizedKeyword);
             SearchScope searchScope = resolveSearchScope(scope);
 
-            posts = switch (searchScope) {
-                case ALL -> postRepository.searchPostsByTitleOrContent(
+            if ("fts".equalsIgnoreCase(searchMode)) {
+                posts = searchPostsWithFts(
+                        normalizedKeyword,
+                        searchScope,
+                        cursor,
+                        size + 1
+                );
+            } else {
+                String escapedKeyword = escapeLikeKeyword(normalizedKeyword);
+                posts = searchPostsWithLike(
                         escapedKeyword,
+                        searchScope,
                         cursor,
                         pageable
                 );
-                case TITLE -> postRepository.searchPostsByTitle(
-                        escapedKeyword,
-                        cursor,
-                        pageable
-                );
-                case CONTENT -> postRepository.searchPostsByContent(
-                        escapedKeyword,
-                        cursor,
-                        pageable
-                );
-            };
+            }
         }
 
         return createPostListResponse(posts, size);
+    }
+
+    private List<Post> searchPostsWithLike(
+            String keyword,
+            SearchScope searchScope,
+            Long cursor,
+            PageRequest pageable
+    ) {
+        return switch (searchScope) {
+            case ALL -> postRepository.searchPostsByTitleOrContent(keyword, cursor, pageable);
+            case TITLE -> postRepository.searchPostsByTitle(keyword, cursor, pageable);
+            case CONTENT -> postRepository.searchPostsByContent(keyword, cursor, pageable);
+        };
+    }
+
+    private List<Post> searchPostsWithFts(
+            String keyword,
+            SearchScope searchScope,
+            Long cursor,
+            int limit
+    ) {
+        return switch (searchScope) {
+            case ALL -> postFtsSearchRepository.searchByTitleOrContent(keyword, cursor, limit);
+            case TITLE -> postFtsSearchRepository.searchByTitle(keyword, cursor, limit);
+            case CONTENT -> postFtsSearchRepository.searchByContent(keyword, cursor, limit);
+        };
     }
 
     private PostListResponse createPostListResponse(List<Post> posts, int size) {

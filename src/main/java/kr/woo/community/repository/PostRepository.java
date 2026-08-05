@@ -74,6 +74,14 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             Pageable pageable
     );
 
+    @Query("""
+       SELECT p
+       FROM Post p
+       JOIN FETCH p.author
+       WHERE p.id IN :postIds
+""")
+    List<Post> findAllByIdsWithAuthor(@Param("postIds") List<Long> postIds);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
        UPDATE Post p

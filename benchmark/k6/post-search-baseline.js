@@ -25,12 +25,14 @@ export const options = {
 export default function () {
     const baseUrl =
         __ENV.BASE_URL || 'http://host.docker.internal:18084';
+    const keyword = __ENV.KEYWORD || 'qzcommona91x';
+    const searchCase = __ENV.SEARCH_CASE || 'common_all';
 
     const response = http.get(
-        `${baseUrl}/posts?keyword=qzcommona91x&scope=all&size=10`,
+        `${baseUrl}/posts?keyword=${encodeURIComponent(keyword)}&scope=all&size=10`,
         {
             tags: {
-                search_case: 'common_all',
+                search_case: searchCase,
                 phase,
             },
         },

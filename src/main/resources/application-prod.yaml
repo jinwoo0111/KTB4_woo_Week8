@@ -3,9 +3,10 @@ spring:
     activate:
       on-profile: prod
 
-  h2:
-    console:
-      enabled: false
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DB}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
 
   jpa:
     show-sql: false
