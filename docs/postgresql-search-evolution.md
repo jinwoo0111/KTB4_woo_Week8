@@ -2444,3 +2444,712 @@ FTS는 동일 결과를 강제하지 않고 토큰화, 검색 결과 수, 정렬
 데이터를 복원한 별도 실험 상태에 `pg_trgm`을 먼저 적용해 LIKE의 부분 문자열 의미를
 유지하면서 COMMON과 RARE 성능을 개선할 수 있는지 검증한다. 이후 Full Text Search를
 같은 원칙으로 측정하고 검색 의미와 운영 비용까지 함께 비교한다.
+
+## 8. 3. pg_trgm·Full Text Search 비교
+
+PostgreSQL LIKE 기준선에서 확인한 선택도 민감도를 개선할 검색 후보를 같은 canonical
+10만 건과 부하 조건으로 비교한다. 3-1에서는 기존 부분 문자열 검색 의미를 유지하는
+`pg_trgm`을 먼저 검증한다. 3-2에서는 단어 기반 검색과 관련도 정렬을 제공하는 Full
+Text Search를 별도로 검증하고, 3-3에서 검색 의미·성능·운영 비용을 함께 비교한다.
+
+```text
+3-1. pg_trgm
+├── 3-1-A. 실험 정책과 인덱스 구조 설계
+├── 3-1-B. 적용과 검색 결과 동등성 검증
+├── 3-1-C. 실행 계획·인덱스 효과·운영 비용 검증
+└── 3-1-D. 단일 사용자·50 RPS 측정과 후보 결론
+
+3-2. Full Text Search
+└── 다음 단계
+
+3-3. LIKE·pg_trgm·Full Text Search 최종 비교
+└── 세 후보 측정 완료 후 진행
+```
+
+### 8.1. 3-1. pg_trgm
+
+`pg_trgm`은 문자열을 연속된 세 글자 단위로 나누어 검색 후보를 찾을 수 있게 한다.
+이번 단계의 목적은 새로운 검색 의미를 도입하는 것이 아니라, 기존
+`LOWER(column) LIKE '%keyword%'`의 부분 문자열 의미를 유지하면서 GIN 인덱스로 후보
+행을 줄일 수 있는지 검증하는 것이다.
+
+#### 3-1-A. pg_trgm 실험 정책과 인덱스 구조 설계
+
+##### 검색 의미와 애플리케이션 쿼리 정책
+
+애플리케이션 검색 쿼리는 변경하지 않는다.
+
+```sql
+LOWER(p.title) LIKE CONCAT('%', :keyword, '%') ESCAPE '\'
+LOWER(p.content) LIKE CONCAT('%', :keyword, '%') ESCAPE '\'
+```
+
+따라서 다음 기능 계약도 그대로 유지한다.
+
+```text
+검색 의미
+├── 제목 또는 본문에 대한 부분 문자열 검색
+├── Locale.ROOT 기반 소문자 정규화
+├── %, _, \ 문자 literal 검색
+├── scope=all·title·content
+├── deleted_at IS NULL 게시글만 검색
+├── post_id DESC 정렬
+└── cursor와 size+1 기반 페이지네이션
+```
+
+`pg_trgm`은 LIKE와 별도의 결과를 생성하는 검색 방식이 아니다. 같은 LIKE 연산이
+검사할 후보 행을 GIN 인덱스로 줄일 수 있도록 지원한다. 따라서 적용 전후 결과 집합,
+순서 및 페이지네이션 응답은 같아야 한다.
+
+두 글자 검색도 기존 API 계약에 포함되므로 기능은 유지한다. 다만 trigram은 세 글자
+단위를 기본으로 하므로 두 글자 검색의 인덱스 성능 개선은 보장 조건으로 두지 않는다.
+
+##### GIN 인덱스 구조
+
+제목과 본문을 하나의 결합 표현식으로 만들지 않고 다음 두 인덱스로 분리한다.
+
+```sql
+CREATE INDEX idx_posts_active_title_trgm_gin
+    ON posts USING GIN (LOWER(title) gin_trgm_ops)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_posts_active_content_trgm_gin
+    ON posts USING GIN (LOWER(content) gin_trgm_ops)
+    WHERE deleted_at IS NULL;
+```
+
+검색 쿼리가 `LOWER(title)`과 `LOWER(content)`에 LIKE 조건을 적용하므로 같은 표현식에
+`gin_trgm_ops`를 지정했다. 모든 검색이 활성 게시글만 대상으로 하므로
+`deleted_at IS NULL` 부분 인덱스를 사용한다.
+
+```text
+scope=title
+└── 제목 GIN 후보
+
+scope=content
+└── 본문 GIN 후보
+
+scope=all
+└── 제목·본문 GIN 후보를 BitmapOr로 결합 가능
+```
+
+첫 번째 후보는 GIN으로 고정했다. GiST는 유사도 검색, 거리 연산 또는 다른 읽기·쓰기
+특성을 비교할 필요가 생길 때 후속 후보로 검토한다. 이번 실험은 기존 LIKE의 포함 검색
+개선 가능성을 먼저 판단하는 데 범위를 제한한다.
+
+##### 데이터베이스와 migration 격리
+
+순수 LIKE 기준선 DB를 변경하지 않고 별도 실험 DB를 사용한다.
+
+```text
+community_benchmark
+└── 순수 PostgreSQL LIKE 기준선
+
+community_benchmark_pgtrgm
+├── Flyway V1
+├── 동일 canonical data-only dump
+├── pg_trgm extension
+└── 제목·본문 GIN 인덱스
+```
+
+`pg_trgm`은 아직 최종 검색 방식으로 선택되지 않았으므로 실험 DDL을 Flyway V2로
+등록하지 않는다. 다음 스크립트로 적용·검증·제거를 관리한다.
+
+```text
+benchmark/postgresql/pgtrgm/
+├── apply-pgtrgm.sql
+├── drop-pgtrgm.sql
+├── verify-pgtrgm-absent.sql
+├── verify-pgtrgm-ready.sql
+└── prepare-pgtrgm-experiment.sh
+```
+
+적용 SQL은 `IF NOT EXISTS`를 사용하지 않고 예상하지 않은 기존 구조가 있으면 실패하게
+한다. 제거 SQL은 반복 정리가 가능하도록 `IF EXISTS`를 사용한다. 공식 실험에서는
+기존 구조를 부분적으로 되돌리는 것보다 실험 DB를 삭제하고 canonical dump에서 다시
+구성하는 방식을 기본 초기화 경로로 사용한다.
+
+##### 실행 계획 판정 정책
+
+인덱스 생성 성공만으로 성능 개선을 판정하지 않는다.
+
+```text
+COMMON
+├── 기본키 역방향 스캔과 조기 종료가 더 저렴하면 GIN 미사용도 허용
+└── GIN 사용 시 전체 후보 수집·정렬 비용을 확인
+
+RARE
+├── 제목·본문 GIN 사용 여부 확인
+├── 후보 행과 heap block 감소 확인
+└── 순수 LIKE 대비 실행 시간 개선 확인
+```
+
+최종 후보 판정은 COMMON과 RARE의 결과 동등성, SQL 실행 계획, 1 VU 및 50 RPS 결과와
+운영 비용을 함께 사용한다.
+
+#### 3-1-B. pg_trgm 적용과 검색 결과 동등성 검증
+
+##### 실험 DB 재현과 적용 순서
+
+`prepare-pgtrgm-experiment.sh`로 다음 과정을 자동화했다.
+
+```text
+canonical dump SHA-256 검증
+    ↓
+community_benchmark_pgtrgm 재생성
+    ↓
+애플리케이션을 통해 Flyway V1 적용
+    ↓
+canonical data-only dump 복원
+    ↓
+canonical 전체 데이터 검증
+    ↓
+pg_trgm 미적용 구조 검증
+    ↓
+LIKE 검색 결과 스냅샷 수집
+    ↓
+pg_trgm extension 생성
+    ↓
+제목·본문 GIN 생성
+    ↓
+ANALYZE posts
+    ↓
+인덱스 valid·ready·operator class·부분 조건 검증
+    ↓
+pg_trgm 적용 후 검색 결과 스냅샷 수집
+    ↓
+적용 전후 스냅샷 바이트 단위 비교
+    ↓
+canonical 전체 데이터 재검증
+    ↓
+원본 파일 SHA-256 생성
+```
+
+최종 준비 원자료는 다음 디렉터리에 저장했다.
+
+```text
+benchmark-data/postgresql/pgtrgm/
+└── postgresql-pgtrgm-preparation-20260805-102734-kst
+```
+
+적용 결과는 다음과 같다.
+
+| 항목 | 결과 |
+| --- | --- |
+| `pg_trgm` 버전 | 1.6 |
+| 제목 인덱스 access method | GIN |
+| 본문 인덱스 access method | GIN |
+| operator class | `gin_trgm_ops` |
+| 부분 조건 | `deleted_at IS NULL` |
+| 두 인덱스 `indisvalid` | true |
+| 두 인덱스 `indisready` | true |
+| FTS `tsvector` 구조 | 없음 |
+
+##### Canonical 검색 결과 동등성
+
+적용 전후에 다음 결과를 스냅샷으로 수집했다.
+
+```text
+건수
+├── COMMON, scope=all
+├── RARE, scope=all
+├── SCOPE, scope=title
+├── SCOPE, scope=content
+└── NEVER, scope=all
+
+정렬과 페이지
+├── COMMON 첫 페이지 조회 후보 11건
+├── RARE 첫 페이지 조회 후보 11건
+├── COMMON 다음 cursor 페이지 조회 후보 11건
+├── SCOPE 제목 첫 페이지 조회 후보 11건
+└── SCOPE 본문 첫 페이지 조회 후보 11건
+```
+
+건수는 다음과 같이 일치했다.
+
+| 검색 사례 | 적용 전 | 적용 후 |
+| --- | ---: | ---: |
+| COMMON·전체 | 9,500 | 9,500 |
+| RARE·전체 | 95 | 95 |
+| SCOPE·제목 | 950 | 950 |
+| SCOPE·본문 | 950 | 950 |
+| NEVER·전체 | 0 | 0 |
+
+첫 페이지와 다음 cursor 페이지의 ID 및 순서도 같았다. 적용 전
+`search-results-before.txt`와 적용 후 `search-results-after.txt`를 `cmp`로 비교한
+결과 차이가 없었다.
+
+##### 애플리케이션 기능 계약 동등성
+
+Testcontainers PostgreSQL 18.4에서 같은 데이터를 pg_trgm 적용 전후로 조회하고 HTTP
+응답 전체를 비교하는 통합 테스트를 추가했다.
+
+```text
+PostgreSqlPgTrgmSearchEquivalenceIntegrationTest
+├── 대소문자 무시
+├── scope=all·title·content
+├── soft delete 제외
+├── %, _, \ literal 검색
+├── post_id 내림차순
+├── has_next와 next_cursor
+├── cursor 다음 페이지
+├── 두 글자 검색 결과 유지
+└── 결과 없음
+```
+
+```text
+PostgreSQL 통합 테스트
+├── 기존 기능 동등성: 9개
+├── benchmark 데이터 동등성: 4개
+├── pg_trgm 검색 동등성: 1개
+└── 총 14개 성공
+```
+
+따라서 pg_trgm 적용은 현재 LIKE 검색의 관찰 가능한 결과와 페이지네이션 계약을
+변경하지 않았다.
+
+#### 3-1-C. 실행 계획·인덱스 효과·운영 비용 검증
+
+##### 실행 계획 수집 조건
+
+다음 상태에서 COMMON과 RARE의 같은 첫 페이지 SQL을 각각 3회 실행했다.
+
+```text
+database: community_benchmark_pgtrgm
+PostgreSQL: 18.4
+canonical posts: 100,000
+active posts: 95,000
+pg_trgm: 1.6
+title GIN: 적용
+content GIN: 적용
+ANALYZE: 완료
+
+EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS)
+ORDER BY post_id DESC
+FETCH FIRST 11 ROWS ONLY
+```
+
+원자료는 다음 디렉터리에 저장했다.
+
+```text
+benchmark-data/postgresql/pgtrgm/explain/
+└── postgresql-pgtrgm-plan-cost-20260805-105120-kst
+```
+
+##### COMMON 실행 계획
+
+COMMON은 활성 게시글 95,000건 중 9,500건, 약 10%와 일치한다.
+
+```text
+Limit
+└── Sort
+    └── Hash Join
+        ├── Bitmap Heap Scan on posts
+        │   └── BitmapOr
+        │       ├── Bitmap Index Scan: title GIN
+        │       └── Bitmap Index Scan: content GIN
+        └── Seq Scan on users
+```
+
+| 실행 | PostgreSQL LIKE | pg_trgm |
+| --- | ---: | ---: |
+| 1회 | 2.958ms | 628.413ms |
+| 2회 | 1.935ms | 211.082ms |
+| 3회 | 1.794ms | 135.632ms |
+| 중앙값 | 1.935ms | 211.082ms |
+
+중앙값 기준으로 pg_trgm은 순수 LIKE보다 약 109.09배 느렸다.
+
+| 항목 | LIKE | pg_trgm |
+| --- | ---: | ---: |
+| shared buffer block | 82 | 11,904 |
+| 게시글 후보·검사 행 | 약 107 | 9,500 |
+| pg_trgm heap block | 해당 없음 | 9,162 |
+| 별도 정렬 | 없음 | 9,500건 top-N 정렬 |
+
+순수 LIKE는 기본키를 역방향으로 읽으며 107건만 검사하고 결과 11건을 찾은 뒤
+중단했다. GIN은 `post_id DESC` 순서를 제공하지 않으므로 검색 결과 9,500건을 모두
+heap에서 재확인하고 사용자와 조인한 뒤 top-N 정렬을 수행했다.
+
+중앙 실행의 11,904개 buffer 접근은 `shared hit=6,228`, `shared read=5,676`으로
+구성됐다. 따라서 9,500건을 모두 디스크에서 읽었다고 해석하지 않고, 인덱스와 heap을
+포함한 shared buffer page 접근량이 LIKE보다 약 145.17배 증가했다고 해석한다.
+
+옵티마이저의 결과 건수 추정도 실행 계획 선택에 영향을 줬다.
+
+```text
+COMMON 예상 결과: 19건
+COMMON 실제 결과: 9,500건
+차이: 500배
+```
+
+옵티마이저는 GIN 후보 수집과 정렬 대상이 약 19건이라고 판단했지만 실제로는
+9,500건이었다. 일반 컬럼 통계만으로 임의의 본문 부분 문자열 분포를 정확하게 알기
+어려워 후보 수집·heap 접근·조인·정렬 비용을 크게 과소평가했다.
+
+##### RARE 실행 계획
+
+RARE는 활성 게시글 95,000건 중 95건, 약 0.1%와 일치한다.
+
+```text
+Limit
+└── Sort
+    └── Hash Join
+        ├── Bitmap Heap Scan on posts
+        │   ├── GIN 후보 95건
+        │   └── Heap Blocks: 95
+        └── Seq Scan on users
+```
+
+| 실행 | PostgreSQL LIKE | pg_trgm |
+| --- | ---: | ---: |
+| 1회 | 149.243ms | 2.130ms |
+| 2회 | 130.484ms | 2.567ms |
+| 3회 | 131.122ms | 2.270ms |
+| 중앙값 | 131.122ms | 2.270ms |
+
+중앙값 기준으로 pg_trgm은 약 57.76배 빨랐고 실행 시간은 약 98.27% 감소했다.
+
+| 항목 | LIKE | pg_trgm |
+| --- | ---: | ---: |
+| shared buffer block | 5,053 | 196 |
+| 게시글 후보·검사 행 | 약 10,528 | 95 |
+| heap 접근 | posts buffer 약 5,051 | 95 blocks |
+| 별도 정렬 | 없음 | 95건 top-N 정렬 |
+
+RARE에서는 95건을 모두 읽고 정렬하는 비용보다 기본키 역방향 스캔으로 10,528건을
+읽으며 `LOWER()`와 LIKE를 검사하는 비용이 훨씬 컸다. GIN이 후보를 95건으로 줄이면서
+buffer 접근량도 약 25.78배 감소했다.
+
+##### 선택도와 LIMIT 조기 종료
+
+COMMON과 RARE의 결과가 반대로 나온 원인은 다음과 같다.
+
+| 구분 | 기본키 역방향 스캔 | pg_trgm GIN |
+| --- | --- | --- |
+| 결과 순서 | 처음부터 `post_id DESC` | 순서 없음 |
+| LIMIT 조기 종료 | 가능 | 후보 수집 후 정렬 필요 |
+| 고빈도 검색 | 최신 영역에서 11건을 빨리 발견 | 많은 후보를 모두 처리 |
+| 희소 검색 | 11건을 찾기 위해 많은 행 검사 | 필요한 후보를 직접 탐색 |
+| 이번 실험에서 유리한 사례 | COMMON | RARE |
+
+따라서 인덱스 사용 여부만으로 성능을 판단할 수 없다. 검색 결과 선택도, LIMIT 크기,
+ORDER BY와 인덱스 순서의 관계 및 데이터 분포를 함께 봐야 한다.
+
+##### 인덱스 생성과 저장 공간 비용
+
+| 작업 | 시간 | 크기 |
+| --- | ---: | ---: |
+| `pg_trgm` extension 생성 | 11.496ms | - |
+| 제목 GIN 생성 | 549.959ms | 7,487,488 bytes, 7,312kB |
+| 본문 GIN 생성 | 8,515.279ms | 15,163,392 bytes, 약 14MB |
+| `ANALYZE posts` | 546.484ms | - |
+| 두 GIN 합계 | 약 9.07초 | 22,650,880 bytes, 약 21.60MiB |
+| GIN 생성과 ANALYZE | 약 9.61초 | - |
+
+두 GIN 인덱스는 posts heap 약 125MB의 약 17.25%이고, 기존 posts 인덱스 전체보다
+약 3.26배 크다. 별도 복원 DB와 원본 DB의 물리 배치 차이가 있으므로 posts 전체 크기
+차이를 모두 pg_trgm 비용으로 보지 않고, 두 GIN 관계의 정확한 합계 22,650,880
+bytes를 공식 저장 비용으로 사용한다.
+
+이번 단계에서는 이후 읽기 실험의 데이터·인덱스 상태를 오염시키지 않기 위해 대량
+INSERT·UPDATE 쓰기 부하는 수행하지 않았다. 다만 인덱스 정의상 다음 유지 비용이
+발생한다.
+
+```text
+INSERT
+└── 제목·본문 trigram 생성과 두 GIN 갱신
+
+제목·본문 UPDATE
+└── 변경된 표현식 GIN 갱신
+
+soft delete
+└── deleted_at IS NULL 부분 인덱스에서 두 엔트리 이탈
+
+GIN 기본 설정
+├── fastupdate 기본 동작
+└── gin_pending_list_limit: 4MB
+```
+
+실제 INSERT·UPDATE 지연, WAL 증가 및 VACUUM 영향은 측정하지 않았으므로 수치로
+단정하지 않는다.
+
+#### 3-1-D. 단일 사용자·50 RPS 공식 성능 측정과 후보 결론
+
+##### 측정 조건과 원자료
+
+LIKE 기준선과 같은 애플리케이션 및 k6 조건을 사용했다.
+
+```text
+Application
+├── JAR SHA-256: 5db7f0045bc2da093291978e65b17f729813df6af965f214fc224e1966fbeccb
+├── Java: Eclipse Temurin 21.0.11
+├── JVM heap: 1GiB / 1GiB
+├── Spring profile: benchmark
+├── server port: 18084
+├── Hikari pool: 10 / 10
+└── generator: disabled
+
+k6
+├── image: grafana/k6@sha256:e7eeddf1ce2361df6920d925297f487c0ba549c44be242c6a9c22f28d9b08efa
+├── smoke: 1 VU, 1 iteration
+├── warm-up: 1 VU, 30초
+├── single user: 1 VU, 60초, 3회
+└── target load: 50 RPS, 60초, pre-allocated VUs 50, 3회
+
+Request
+├── GET /posts
+├── scope=all
+├── size=10
+├── COMMON: qzcommona91x
+└── RARE: tvrarec73z
+```
+
+공식 원자료는 다음 두 디렉터리에 저장했다.
+
+```text
+COMMON
+└── benchmark-data/postgresql/pgtrgm/performance/
+    postgresql-pgtrgm-common-20260805-113330-kst
+
+RARE
+└── benchmark-data/postgresql/pgtrgm/performance/
+    postgresql-pgtrgm-rare-20260805-114826-kst
+```
+
+##### COMMON 단일 사용자
+
+| 실행 | 요청 | 처리량 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 404 | 6.727 RPS | 147.78ms | 143.18ms | 176.94ms | 234.48ms | 265.02ms | 0 |
+| 2회 | 394 | 6.559 RPS | 151.44ms | 144.24ms | 184.65ms | 227.35ms | 706.94ms | 0 |
+| 3회 | 406 | 6.753 RPS | 147.12ms | 142.63ms | 168.12ms | 228.11ms | 301.63ms | 0 |
+| 실행별 요약값의 중앙값 | 404 | 6.727 RPS | 147.78ms | 143.18ms | 176.94ms | 228.11ms | 301.63ms | 0 |
+
+LIKE 단일 사용자 기준선과 비교하면 다음과 같다.
+
+| 지표 | LIKE | pg_trgm | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 4.15ms | 147.78ms | 약 35.61배 악화 |
+| p50 | 3.96ms | 143.18ms | 약 36.12배 악화 |
+| p95 | 5.83ms | 176.94ms | 약 30.32배 악화 |
+| p99 | 8.04ms | 228.11ms | 약 28.39배 악화 |
+| 처리량 | 184.66 RPS | 6.727 RPS | 약 27.45배 감소 |
+
+30초 warm-up 후 COMMON HTTP p50은 약 143ms로, 캐시가 따뜻해진 세 번째 SQL 실행
+135.632ms와 가까웠다. 실행 계획 중앙값 211.082ms보다 낮은 이유는 EXPLAIN 반복과
+HTTP 측정의 캐시 시점이 같지 않기 때문이다. 서로 다른 시점의 SQL 시간과 HTTP 시간을
+단순 차감해 프레임워크 비용으로 해석하지 않는다.
+
+##### COMMON 목표 50 RPS
+
+| 실행 | 완료 | 실제 처리량 | 미시작 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 2,739 | 44.906 RPS | 262 | 1,034.72ms | 1,025.02ms | 1,275.86ms | 1,368.56ms | 2,161.43ms | 0 |
+| 2회 | 2,777 | 45.488 RPS | 224 | 1,020.95ms | 1,036.60ms | 1,177.39ms | 1,306.66ms | 2,005.65ms | 0 |
+| 3회 | 2,905 | 47.705 RPS | 96 | 949.00ms | 970.86ms | 1,082.92ms | 1,161.03ms | 1,849.53ms | 0 |
+| 실행별 요약값의 중앙값 | 2,777 | 45.488 RPS | 224 | 1,020.95ms | 1,025.02ms | 1,177.39ms | 1,306.66ms | 2,005.65ms | 0 |
+
+모든 시작된 요청과 기능 검사는 성공했지만 세 실행에서 최대 VU 50에 도달했고 미시작
+요청이 발생했다. 대표 처리량 달성률은 약 90.98%다.
+
+| 지표 | LIKE | pg_trgm | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 6.81ms | 1,020.95ms | 약 149.86배 악화 |
+| p50 | 6.17ms | 1,025.02ms | 약 166.25배 악화 |
+| p95 | 9.44ms | 1,177.39ms | 약 124.74배 악화 |
+| p99 | 18.01ms | 1,306.66ms | 약 72.54배 악화 |
+| 실제 처리량 | 49.999 RPS | 45.488 RPS | 목표의 약 90.98% |
+| 미시작 요청 중앙값 | 0 | 224 | pg_trgm에서 발생 |
+
+따라서 COMMON은 단일 사용자 지연과 목표 부하 처리 능력 모두 LIKE보다 악화됐고 공식
+성공 조건을 충족하지 못했다.
+
+##### RARE 단일 사용자
+
+| 실행 | 요청 | 처리량 | 평균 | p50 | p95 | p99 | 최대 HTTP | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 13,275 | 221.248 RPS | 4.27ms | 3.94ms | 6.13ms | 9.35ms | 166.00ms | 0 |
+| 2회 | 13,267 | 221.117 RPS | 4.00ms | 3.75ms | 5.68ms | 8.39ms | 65.90ms | 0 |
+| 3회 | 9,689 | 161.476 RPS | 3.97ms | 3.79ms | 5.28ms | 7.98ms | 47.42ms | 0 |
+| 실행별 요약값의 중앙값 | 13,267 | 221.117 RPS | 4.00ms | 3.79ms | 5.68ms | 8.39ms | 65.90ms | 0 |
+
+LIKE 단일 사용자 기준선과 비교하면 다음과 같다.
+
+| 지표 | LIKE | pg_trgm | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 135.18ms | 4.00ms | 약 33.81배 개선 |
+| p50 | 133.55ms | 3.79ms | 약 35.26배 개선 |
+| p95 | 142.59ms | 5.68ms | 약 25.10배 개선 |
+| p99 | 164.18ms | 8.39ms | 약 19.57배 개선 |
+| 처리량 중앙값 | 7.380 RPS | 221.117 RPS | 약 29.96배 증가 |
+
+RARE SQL 실행 시간 중앙값 2.270ms와 HTTP p50 3.79ms의 차이에는 JDBC, Hibernate,
+DTO 변환, JSON 직렬화 및 HTTP 전송이 포함된다. 인덱스 적용 후에는 DB 외 비용의 상대적
+비중이 커졌다.
+
+공식 3회에서 HTTP 오류와 기능 실패는 없었고 k6 exit code도 모두 0이었다. 다만 2회와
+3회에는 HTTP 처리 시간과 분리된 k6 iteration scheduling 정지가 관찰됐다.
+
+```text
+2회
+├── iteration max: 약 4.13초
+└── HTTP max: 65.90ms
+
+3회
+├── iteration max: 약 19.44초
+└── HTTP max: 47.42ms
+```
+
+같은 현상을 진단했을 때 PostgreSQL JDBC 세션은 모두 `idle / ClientRead`였고 Tomcat
+worker thread도 작업 큐에서 대기 중이었다. 따라서 이 구간을 DB 검색 지연으로
+분류하지 않는다. HTTP 지연 분포는 세 번 모두 안정적이지만 3회차 처리량은 k6 실행
+환경 정지 영향을 받았으므로 단일 사용자 처리량은 보조 지표로 사용한다.
+
+##### RARE 목표 50 RPS
+
+| 실행 | 완료 | 실제 처리량 | 미시작 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 3,001 | 50.013 RPS | 0 | 6.87ms | 6.78ms | 9.30ms | 13.09ms | 37.60ms | 0 |
+| 2회 | 3,000 | 50.001 RPS | 0 | 6.85ms | 6.76ms | 9.26ms | 12.41ms | 75.27ms | 0 |
+| 3회 | 3,001 | 50.013 RPS | 0 | 6.99ms | 6.87ms | 9.27ms | 11.86ms | 28.49ms | 0 |
+| 실행별 요약값의 중앙값 | 3,001 | 50.013 RPS | 0 | 6.87ms | 6.78ms | 9.27ms | 12.41ms | 37.60ms | 0 |
+
+세 실행 모두 약 50 RPS, 미시작 요청 0, HTTP 오류 0 및 기능 검사 실패 0을
+충족했다. 측정 경계에서 3,000건 또는 3,001건이 실행돼 대표 처리량이 목표보다 아주
+조금 높은 100.03%로 계산되지만 실질적으로 목표를 완전히 달성한 상태다.
+
+| 지표 | LIKE | pg_trgm | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 421.93ms | 6.87ms | 약 61.42배 개선 |
+| p50 | 252.85ms | 6.78ms | 약 37.27배 개선 |
+| p95 | 1,096.34ms | 9.27ms | 약 118.21배 개선 |
+| p99 | 1,234.66ms | 12.41ms | 약 99.52배 개선 |
+| 실제 처리량 | 48.724 RPS | 50.013 RPS | 목표 달성 |
+| 미시작 요청 중앙값 | 56 | 0 | 제거 |
+
+RARE에서는 pg_trgm이 LIKE의 검사 범위와 반복 편차를 줄이고 목표 50 RPS를 안정적으로
+처리했다.
+
+##### 무효 측정 분리
+
+공식 RARE 세트를 얻기 전에 두 번의 불완전 실행이 있었다.
+
+```text
+postgresql-pgtrgm-rare-20260805-114051-kst
+├── Hikari retrograde clock change 감지
+├── connection soft eviction
+├── client dial timeout 1건
+└── INVALID.txt, 공식 비교 제외
+
+postgresql-pgtrgm-rare-20260805-114338-kst
+├── client dial timeout
+├── 당시 PostgreSQL과 Tomcat은 idle
+├── threshold 실패 후 runner 중단
+└── INVALID.txt, 공식 비교 제외
+```
+
+정상 HTTP 요청의 지연은 약 4ms였지만 오류 0 조건을 충족하지 않았고 전체 반복도
+완료되지 않았으므로 공식 결과에 섞지 않았다. 공식 세트에서는 threshold 실패 여부를
+기록하면서 나머지 반복을 계속 수집하도록 runner를 보완했고, smoke·warm-up·1 VU
+3회·50 RPS 3회가 모두 exit code 0으로 끝났다.
+
+##### LIKE와 pg_trgm 종합 비교
+
+| 조건 | PostgreSQL LIKE | pg_trgm | 판정 |
+| --- | ---: | ---: | --- |
+| COMMON SQL | 1.935ms | 211.082ms | 약 109.09배 악화 |
+| COMMON 1 VU p50 | 3.96ms | 143.18ms | 약 36.12배 악화 |
+| COMMON 50 RPS p50 | 6.17ms | 1,025.02ms | 약 166.25배 악화 |
+| COMMON 50 RPS 미시작 | 0 | 중앙 224 | pg_trgm 실패 |
+| RARE SQL | 131.122ms | 2.270ms | 약 57.76배 개선 |
+| RARE 1 VU p50 | 133.55ms | 3.79ms | 약 35.26배 개선 |
+| RARE 50 RPS p50 | 252.85ms | 6.78ms | 약 37.27배 개선 |
+| RARE 50 RPS 미시작 | 중앙 56 | 0 | pg_trgm 성공 |
+
+```text
+COMMON
+├── LIKE: 최신 영역 약 107건 검사 후 조기 종료
+└── pg_trgm: 9,500건 수집·heap 접근·조인·정렬
+
+RARE
+├── LIKE: 최신 영역 약 10,528건 검사 후 조기 종료
+└── pg_trgm: GIN 후보 95건 수집·정렬
+```
+
+#### 3-1 전체 체크포인트 역검증
+
+##### 정책과 격리
+
+- pg_trgm의 목표를 기존 부분 문자열 검색 의미 유지로 고정했다.
+- 애플리케이션 JPQL과 Service 검색 정규화·escape 계약을 변경하지 않았다.
+- `community_benchmark_pgtrgm`을 별도로 사용했다.
+- 원본 `community_benchmark`에는 pg_trgm과 검색 후보 인덱스가 없음을 다시 확인했다.
+- 실험 DDL을 Flyway versioned migration에 포함하지 않았다.
+- 제목과 본문에 별도의 `LOWER(column) gin_trgm_ops` 부분 GIN을 적용했다.
+
+##### 데이터와 검색 결과
+
+- canonical dump SHA-256
+  `e2dbcf795e0b124ac93f210541d49e9e8da93064cc804a779a155e6325c374c6`을
+  다시 검증했다.
+- 사용자 100명, 게시글 100,000건, 활성 95,000건, 삭제 5,000건이 유지됐다.
+- COMMON 9,500건, MEDIUM 950건, RARE 95건, FIXED 10건 및 SCOPE 제목·본문
+  각 950건이 유지됐다.
+- 본문 길이 60,000·30,000·9,000·0·1,000건 분포가 유지됐다.
+- 적용 전후 COMMON·RARE·SCOPE·NEVER 건수가 같았다.
+- 첫 페이지 및 다음 cursor 페이지 ID·순서 스냅샷이 바이트 단위로 같았다.
+- 대소문자, scope, soft delete, 특수문자, cursor와 두 글자 검색 통합 테스트가
+  통과했다.
+
+##### 실행 계획과 운영 비용
+
+- COMMON과 RARE 실행 계획을 각각 3회 수집했다.
+- 두 검색에서 제목·본문 GIN이 실제 Bitmap Index Scan에 참여했다.
+- COMMON의 19건 예상과 9,500건 실제 결과 차이를 확인했다.
+- COMMON의 기본키 조기 종료 대비 GIN 후보 전체 처리 비용을 확인했다.
+- RARE의 후보 감소와 실행 시간 개선을 확인했다.
+- 두 GIN의 정확한 크기 22,650,880 bytes와 생성·ANALYZE 시간을 기록했다.
+- 아직 측정하지 않은 쓰기 지연과 WAL 비용을 실제 수치처럼 기록하지 않았다.
+
+##### 공식 성능과 원자료
+
+- COMMON과 RARE 각각 smoke와 30초 warm-up을 수행했다.
+- COMMON과 RARE 각각 1 VU 60초 3회를 수행했다.
+- COMMON과 RARE 각각 50 RPS 60초, VU 50 조건을 3회 수행했다.
+- COMMON의 50 VU 소진, 중앙 미시작 요청 224건 및 목표 미달을 실패로 반영했다.
+- RARE의 약 50 RPS, 미시작 0, HTTP 오류 0 및 검사 실패 0을 확인했다.
+- 불완전 RARE 두 세트를 `INVALID.txt`로 공식 결과와 분리했다.
+- 준비·실행 계획·COMMON·RARE 공식 원자료의 SHA-256을 다시 검증했다.
+- 측정 전후 canonical 상태와 두 GIN의 valid·ready 상태가 유지됐다.
+- 고정 JAR과 k6 script SHA-256이 LIKE 기준선과 동일함을 다시 확인했다.
+- 빠른 회귀 테스트와 PostgreSQL 통합 테스트가 성공했다.
+- `git diff --check`가 통과했다.
+- 공식 측정 후 Spring Boot 애플리케이션을 정상 종료했다.
+
+#### 3-1 완료 판정
+
+`pg_trgm`은 기존 부분 문자열 검색 결과와 API 계약을 유지했고 RARE에서는 SQL과 실제
+HTTP 부하 모두 크게 개선했다. RARE 50 RPS의 p50은 252.85ms에서 6.78ms로 약
+37.27배 개선됐고 미시작 요청 중앙값 56건이 0건이 됐다.
+
+그러나 현재 `ORDER BY post_id DESC LIMIT 11` 첫 페이지 쿼리에서 COMMON은 기본키
+역방향 스캔의 조기 종료가 더 유리했다. 옵티마이저가 9,500건을 19건으로
+과소평가하면서 GIN을 선택했고, 후보 전체의 heap 접근·조인·정렬 비용 때문에 COMMON
+50 RPS p50이 6.17ms에서 1,025.02ms로 약 166.25배 악화됐다. 최대 VU 50에 도달했고
+미시작 요청 중앙값 224건이 발생했다.
+
+따라서 현재 형태의 pg_trgm을 모든 검색어에 적용하는 단일 검색 방식으로 채택하지
+않는다.
+
+> pg_trgm GIN은 부분 문자열 후보 탐색과 희소 검색 개선에는 효과적이다. 그러나 GIN은
+> `post_id DESC` 순서를 제공하지 않고 고빈도 결과 전체를 수집·정렬해야 하므로 이번
+> COMMON 첫 페이지 조건에서는 순수 LIKE보다 불리하다. 향후 선택도에 따른 실행 전략
+> 분기나 쿼리·정렬 구조를 재설계한다면 희소 부분 문자열 검색 후보로 다시 검토할 수
+> 있지만, 현재 구조 그대로는 운영 검색의 단일 해법으로 확정하지 않는다.
+
+다음 단계에서는 별도 canonical 복원 DB에 PostgreSQL Full Text Search를 적용한다.
+FTS는 LIKE와 검색 결과를 같게 만드는 후보가 아니라 토큰·사전·검색 구성과 관련도
+정렬이라는 다른 검색 의미를 제공한다. 따라서 3-2에서는 먼저 허용할 검색 의미와 결과
+차이를 설계한 뒤, 같은 COMMON·RARE 데이터와 부하 조건에서 실행 계획·성능·운영
+비용을 측정한다.
