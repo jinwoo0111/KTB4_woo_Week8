@@ -1,0 +1,89 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  # 1. CI: 이미지 빌드 및 Docker Hub 푸시
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Backend Code
+        uses: actions/checkout@v4
+        with:
+          path: backend
+
+      - name: Checkout Frontend Code
+        uses: actions/checkout@v4
+        with:
+          repository: jinwoo0111/KTB4_woo_Week10
+          path: frontend
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/community-backend:latest
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/community-frontend:latest
+
+  # 2. CD: EC2 서버로 자동 배포
+  deploy:
+    name: Deploy to EC2
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Backend Code
+        uses: actions/checkout@v4
+        with:
+          path: backend
+
+      # compose.yaml 파일을 EC2 서버의 ~/community 디렉토리로 전송
+      - name: Copy compose.yaml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "./backend/compose.yaml"
+          target: "~/community"
+          strip_components: 1
+
+      # EC2 SSH 접속 후 최신 이미지 pull 및 docker compose 실행
+      - name: Execute Remote SSH Commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/community
+            # 백엔드 compose.yaml의 이미지 태그 지정을 위해 최신 이미지 pull
+            docker compose pull || true
+            # Docker Hub의 latest 이미지 기반으로 컨테이너 재구동
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} docker compose up -d --remove-orphans
+            # 안 쓰는 옛날 Docker 이미지 정리
+            docker image prune -f

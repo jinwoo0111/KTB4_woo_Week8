@@ -1,62 +1,57 @@
 services:
-  postgres-local:
-    image: postgres:18.4
-    profiles:
-      - local
+  postgres:
+    image: postgres:16-alpine
+    container_name: community-postgres
+    restart: always
     environment:
-      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-community}
-      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-community_local}
-      # The active PostgreSQL container rejects an empty password during init.
-      # A blank default keeps an inactive Compose profile from blocking interpolation.
-      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-}
-      POSTGRES_INITDB_ARGS: >-
-        --encoding=UTF8
-        --locale-provider=builtin
-        --builtin-locale=PG_UNICODE_FAST
+      POSTGRES_DB: ${POSTGRES_DB:-community}
+      POSTGRES_USER: ${POSTGRES_USER:-community_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-community_password}
     ports:
-      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
-      - postgres-local-data:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
-    stop_grace_period: 30s
+      retries: 5
 
-  postgres-benchmark:
-    image: postgres:18.4
-    profiles:
-      - benchmark
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-binarywoo0111}/community-backend:latest
+    container_name: community-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      POSTGRES_DB: ${BENCHMARK_POSTGRES_DB:-community_benchmark}
-      POSTGRES_USER: ${BENCHMARK_POSTGRES_USER:-community_benchmark}
-      # The active PostgreSQL container rejects an empty password during init.
-      # A blank default keeps an inactive Compose profile from blocking interpolation.
-      POSTGRES_PASSWORD: ${BENCHMARK_POSTGRES_PASSWORD:-}
-      POSTGRES_INITDB_ARGS: >-
-        --encoding=UTF8
-        --locale-provider=builtin
-        --builtin-locale=PG_UNICODE_FAST
+      SPRING_PROFILES_ACTIVE: prod
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-community}
+      POSTGRES_USER: ${POSTGRES_USER:-community_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-community_password}
+      JWT_SECRET: ${JWT_SECRET:-your_default_jwt_secret_key_here}
     ports:
-      - "127.0.0.1:${BENCHMARK_POSTGRES_PORT:-5433}:5432"
+      - "8080:8080"
     volumes:
-      - postgres-benchmark-data:/var/lib/postgresql
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    stop_grace_period: 30s
+      - community-uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ../community-react
+      dockerfile: Dockerfile
+    image: ${DOCKERHUB_USERNAME:-binarywoo0111}/community-frontend:latest
+    container_name: community-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
 
 volumes:
-  postgres-local-data:
-    name: community-postgres-local-data
-  postgres-benchmark-data:
-    name: community-postgres-benchmark-data
+  postgres-data:
+  community-uploads:
