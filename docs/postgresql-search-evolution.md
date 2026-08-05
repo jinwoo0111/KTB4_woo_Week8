@@ -12,9 +12,9 @@ Full Text Search를 비교하는 과정을 기록한다.
 프로젝트에서 결정한 정책, 구현 결과, 실행 검증 및 성능 비교에 필요한 재현 정보만
 남긴다.
 
-## 1. PostgreSQL 이전 배경과 진행 원칙
+## PostgreSQL 이전 배경과 진행 원칙
 
-### 1.1. H2 검색 성능의 한계
+### H2 검색 성능의 한계
 
 기존 게시글 검색은 H2에서 다음 방식으로 동작한다.
 
@@ -38,7 +38,7 @@ LOWER(column) LIKE '%keyword%'
 따라서 현재 H2의 `LOWER(column) LIKE '%keyword%'` 방식은 10만 건 규모에서 운영용
 검색 기능으로 사용하기 어렵다고 판단했다.
 
-### 1.2. PostgreSQL 이전 후 비교 대상
+### PostgreSQL 이전 후 비교 대상
 
 PostgreSQL로 데이터베이스를 이전한 사실만으로 최종 검색 방식을 결정하지 않는다.
 동일한 10만 건 데이터와 동일한 부하 조건에서 다음 방식을 비교한다.
@@ -63,7 +63,7 @@ PostgreSQL로 데이터베이스를 이전한 사실만으로 최종 검색 방�
 - 쓰기 및 데이터 생성 비용
 - 운영 복잡도
 
-### 1.3. 현재 진행 범위
+### 현재 진행 범위
 
 PostgreSQL 이전은 다음 순서로 진행한다.
 
@@ -77,11 +77,13 @@ PostgreSQL 이전은 다음 순서로 진행한다.
 검색 방식별 `LIKE`, `pg_trgm`, Full Text Search 구현과 성능 측정은 PostgreSQL 이전
 기반과 재현 가능한 benchmark dataset을 완성한 뒤 진행한다.
 
-## 2. 1-1. PostgreSQL 이전 정책과 환경 설계
+## 1. PostgreSQL 이전 기반 구축
 
-### 2.1. PostgreSQL 실행 환경 정책
+### 1-1. PostgreSQL 이전 정책과 환경 설계
 
-#### PostgreSQL 버전
+#### 1-1-A. PostgreSQL 실행 환경 정책
+
+##### PostgreSQL 버전
 
 PostgreSQL 버전과 Docker 이미지는 다음과 같이 고정했다.
 
@@ -103,7 +105,7 @@ image ID: sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744
 OS/architecture: linux/arm64
 ```
 
-#### local·benchmark 분리
+##### local·benchmark 분리
 
 일반 개발용 PostgreSQL과 성능 측정용 PostgreSQL을 서로 다른 컨테이너로 분리한다.
 
@@ -130,7 +132,7 @@ Docker Compose project
 자원까지 물리적으로 분리하는 것은 아니다. 공식 성능 비교에서는 실행 중인 다른
 프로세스와 컨테이너 상태도 동일하게 유지한다.
 
-#### 데이터 영속성
+##### 데이터 영속성
 
 두 PostgreSQL 컨테이너는 각각 독립적인 named volume을 사용한다.
 
@@ -145,7 +147,7 @@ community-postgres-benchmark-data
 PostgreSQL 18 Docker 이미지의 데이터 경로 정책에 맞춰 volume은 컨테이너의
 `/var/lib/postgresql`에 연결한다.
 
-#### 인코딩과 locale
+##### 인코딩과 locale
 
 두 환경은 동일한 초기화 옵션을 사용한다.
 
@@ -158,7 +160,7 @@ builtin locale: PG_UNICODE_FAST
 문자열 비교와 검색 결과 및 성능 비교 조건이 환경마다 달라지지 않도록 local과
 benchmark에 같은 값을 적용한다.
 
-#### 비밀 정보
+##### 비밀 정보
 
 실제 비밀번호는 Git에서 추적하지 않는 `.env`에 저장한다. 저장소에는 필요한 변수의
 형식만 제공하는 `.env.example`을 포함한다.
@@ -175,9 +177,9 @@ benchmark에 같은 값을 적용한다.
 재사용하지 않는다. 운영 비밀번호는 배포 환경의 secret 또는 프로세스 환경 변수로
 주입한다.
 
-### 2.2. 스키마·애플리케이션 정책
+#### 1-1-B. 스키마·애플리케이션 정책
 
-#### 스키마 관리 주체
+##### 스키마 관리 주체
 
 PostgreSQL 스키마의 생성 및 변경 책임을 다음과 같이 분리한다.
 
@@ -196,7 +198,7 @@ PostgreSQL 스키마는 Flyway versioned migration으로 변경한다. Hibernate
 `ddl-auto=validate`를 사용해 엔티티 매핑과 실제 스키마의 불일치를 애플리케이션
 시작 시 검증한다.
 
-#### 기본 migration
+##### 기본 migration
 
 첫 migration은 다음 파일로 관리한다.
 
@@ -229,7 +231,7 @@ Full Text Search 인덱스
 검색 후보에만 필요한 함수
 ```
 
-#### 실험 DDL과 최종 migration 분리
+##### 실험 DDL과 최종 migration 분리
 
 검색 후보를 실험하는 과정에서는 후보 DDL을 Flyway versioned migration에 바로
 누적하지 않는다.
@@ -249,7 +251,7 @@ Flyway versioned migration
 이 정책은 최종적으로 선택하지 않은 검색 구조가 운영 migration history에 남는 것을
 방지한다.
 
-#### 기본키 생성 전략
+##### 기본키 생성 전략
 
 기존 엔티티의 `AUTO` 기본키 전략은 PostgreSQL의 명시적인 sequence 전략으로
 변경한다.
@@ -273,9 +275,9 @@ PostgreSQL sequence INCREMENT BY: 50
 사용하기 위한 정책이다. ID는 유일성을 보장하지만 빈틈없는 연속 번호는 보장하지
 않는다.
 
-### 2.3. 테스트·benchmark·재현성 정책
+#### 1-1-C. 테스트·benchmark·재현성 정책
 
-#### 테스트 DB 역할 분리
+##### 테스트 DB 역할 분리
 
 테스트는 다음 역할에 따라 DB를 분리한다.
 
@@ -309,7 +311,7 @@ H2를 완전히 제거하지 않지만 PostgreSQL 고유 동작을 검증해야 
 
 `postgresIntegrationTest`와 Testcontainers 기반 검증은 1-3에서 구현했다.
 
-#### benchmark 데이터 재현 정책
+##### benchmark 데이터 재현 정책
 
 benchmark generator는 다음 값을 기준으로 사용한다.
 
@@ -349,9 +351,9 @@ sequence 상태는 canonical dump가 복원하는 역할로 분리한다.
 - local PostgreSQL 중지 여부
 - 복원 후 통계 정보
 
-## 3. 1-2. PostgreSQL 실행 환경과 스키마 기반 구축
+### 1-2. PostgreSQL 실행 환경과 스키마 기반 구축
 
-### 3.1. PostgreSQL Docker Compose 실행 환경
+#### 1-2-A. PostgreSQL Docker Compose 실행 환경
 
 저장소 루트에 `compose.yaml`을 추가하고 local과 benchmark를 Compose profile로
 분리했다.
@@ -382,7 +384,7 @@ docker compose --profile benchmark up -d postgres-benchmark
 두 서비스를 모두 정의했지만 profile을 지정하지 않은 `docker compose up -d`에서는
 PostgreSQL 서비스를 자동 실행하지 않는다.
 
-#### 포트와 네트워크
+##### 포트와 네트워크
 
 local과 benchmark는 다음 주소에만 공개한다.
 
@@ -403,7 +405,7 @@ ports:
   - "127.0.0.1:${BENCHMARK_POSTGRES_PORT:-5433}:5432"
 ```
 
-#### health check
+##### health check
 
 두 서비스에 `pg_isready` 기반 health check를 적용했다.
 
@@ -421,7 +423,7 @@ healthcheck:
 실제 실행에서 두 컨테이너가 `healthy` 상태에 도달하고 설정된 DB와 사용자로 연결을
 받을 수 있는 것을 확인했다.
 
-#### profile별 비밀번호 처리
+##### profile별 비밀번호 처리
 
 Compose profile은 서비스 선택 전에 YAML 환경 변수를 먼저 해석한다. `${VAR:?}`를
 사용하면 local profile만 실행해도 비활성 benchmark 서비스의 비밀번호가 없다는 이유로
@@ -448,9 +450,9 @@ Database is uninitialized and superuser password is not specified.
 실제 검증에서 비밀번호가 없는 활성 컨테이너는 `Exited (1)`로 종료됐고 데이터베이스는
 초기화되지 않았다.
 
-### 3.2. 애플리케이션 의존성·프로필·환경 변수 전환
+#### 1-2-B. 애플리케이션 의존성·프로필·환경 변수 전환
 
-#### Gradle 의존성
+##### Gradle 의존성
 
 일반 실행 환경의 H2 의존성을 PostgreSQL과 Flyway로 전환했다.
 
@@ -475,7 +477,7 @@ flyway-database-postgresql-11.14.1.jar
 spring-boot-flyway-4.0.6.jar
 ```
 
-#### 공통 스키마 관리 설정
+##### 공통 스키마 관리 설정
 
 공통 `application.yaml`에서 H2 DataSource를 제거하고 다음 정책을 적용했다.
 
@@ -506,7 +508,7 @@ Hibernate가 엔티티와 스키마 검증
 일치하면 애플리케이션 시작 완료
 ```
 
-#### local DataSource
+##### local DataSource
 
 ```yaml
 spring:
@@ -516,7 +518,7 @@ spring:
     password: ${LOCAL_POSTGRES_PASSWORD}
 ```
 
-#### benchmark DataSource
+##### benchmark DataSource
 
 ```yaml
 spring:
@@ -538,7 +540,7 @@ spring:
         order_inserts: true
 ```
 
-#### prod DataSource
+##### prod DataSource
 
 운영 환경은 외부 PostgreSQL 연결 정보를 환경 변수로 전달한다.
 
@@ -552,7 +554,7 @@ spring:
 
 운영 연결 정보와 비밀번호에는 저장소 기본값을 제공하지 않는다.
 
-#### 빠른 테스트 설정
+##### 빠른 테스트 설정
 
 test 프로필은 H2와 Hibernate `create-drop`을 유지하고 Flyway를 비활성화한다.
 
@@ -568,7 +570,7 @@ spring.jpa.hibernate.ddl-auto=create-drop
 PostgreSQL migration과 PostgreSQL 고유 동작은 1-3의 Testcontainers 통합 테스트에서
 자동 검증한다.
 
-#### H2 Console과 Dockerfile 정리
+##### H2 Console과 Dockerfile 정리
 
 일반 실행 환경에서 H2를 제거하면서 다음 설정도 제거했다.
 
@@ -584,9 +586,9 @@ Dockerfile의 DB_PATH
 애플리케이션 컨테이너는 업로드 파일만 직접 보관하고 PostgreSQL 데이터는 PostgreSQL
 컨테이너의 named volume에서 관리한다.
 
-### 3.3. Flyway V1 스키마·엔티티 sequence 구현
+#### 1-2-C. Flyway V1 스키마·엔티티 sequence 구현
 
-#### V1 구조
+##### V1 구조
 
 기본 스키마 migration을 다음 위치에 추가했다.
 
@@ -619,7 +621,7 @@ V1__create_base_schema.sql
 └── 일반 애플리케이션 조회용 인덱스
 ```
 
-#### users
+##### users
 
 `users`는 이메일과 닉네임의 유일성을 DB에서 보장하고 역할 값의 범위를 제한한다.
 
@@ -635,7 +637,7 @@ ck_users_role: USER 또는 ADMIN
 서비스가 이미 중복을 거부하는 닉네임도 동시 요청에서 유일성을 보장할 수 있도록
 UNIQUE 제약을 적용했다.
 
-#### posts
+##### posts
 
 `posts`는 작성자 외래키와 음수가 될 수 없는 counter 제약을 가진다.
 
@@ -657,7 +659,7 @@ view_count:    INTEGER NOT NULL DEFAULT 0
 
 게시글 본문은 엔티티의 `length=32_000`과 일치하도록 `VARCHAR(32000)`을 사용한다.
 
-#### comments
+##### comments
 
 `comments`는 게시글과 작성자에 대한 외래키를 가진다.
 
@@ -667,7 +669,7 @@ fk_comments_post
 fk_comments_user
 ```
 
-#### post_likes
+##### post_likes
 
 `post_likes`는 동일한 사용자가 동일한 게시글에 좋아요를 두 번 생성하지 못하도록
 복합 UNIQUE 제약을 사용한다.
@@ -680,7 +682,7 @@ uk_post_likes_post_user
 애플리케이션의 사전 중복 검사는 일반적인 중복 요청을 도메인 오류로 변환하고, DB
 UNIQUE 제약은 동시 요청에서도 중복 행이 저장되는 것을 최종 차단한다.
 
-#### 외래키 삭제 정책
+##### 외래키 삭제 정책
 
 회원, 게시글 및 댓글은 `deleted_at`을 사용하는 soft delete 방식이므로 외래키에
 `ON DELETE CASCADE`를 적용하지 않는다. PostgreSQL의 기본 `NO ACTION` 동작을 사용해
@@ -698,7 +700,7 @@ UNIQUE 제약은 동시 요청에서도 중복 행이 저장되는 것을 최종
 └── comments.deleted_at 설정
 ```
 
-#### 일반 조회용 인덱스
+##### 일반 조회용 인덱스
 
 V1에는 검색 후보 인덱스가 아닌 현재 애플리케이션 관계 조회와 목록 조회에 필요한
 인덱스만 포함한다.
@@ -727,7 +729,7 @@ CREATE INDEX idx_comments_active_post
     WHERE deleted_at IS NULL;
 ```
 
-#### 엔티티 sequence 매핑
+##### 엔티티 sequence 매핑
 
 네 엔티티에 독립적인 `@SequenceGenerator`를 적용했다.
 
@@ -756,9 +758,9 @@ CREATE SEQUENCE users_seq
 `last_value`는 101이 됐다. 이는 `allocationSize=50`에서 애플리케이션 종료 시 사용하지
 않은 ID 범위가 남을 수 있는 정상 동작이다.
 
-### 3.4. 빈 DB 초기화·재시작·애플리케이션 부팅 검증
+#### 1-2-D. 빈 DB 초기화·재시작·애플리케이션 부팅 검증
 
-#### 검증 시작 조건
+##### 검증 시작 조건
 
 검증 전 local과 benchmark 컨테이너 및 named volume이 존재하지 않는 것을 확인했다.
 PostgreSQL 컨테이너를 처음 실행한 뒤 애플리케이션 시작 전 `public` 스키마의 테이블
@@ -768,7 +770,7 @@ PostgreSQL 컨테이너를 처음 실행한 뒤 애플리케이션 시작 전 `p
 public_table_count = 0
 ```
 
-#### local 최초 부팅
+##### local 최초 부팅
 
 빈 local DB에서 확인한 실행 순서는 다음과 같다.
 
@@ -798,7 +800,7 @@ Successfully applied 1 migration to schema "public", now at version v1
 
 애플리케이션 health endpoint는 `HTTP 200`을 반환했다.
 
-#### PostgreSQL·애플리케이션 재시작
+##### PostgreSQL·애플리케이션 재시작
 
 local DB에 사용자 두 명을 저장한 뒤 애플리케이션을 graceful shutdown하고 PostgreSQL
 컨테이너를 재시작했다. named volume은 유지했다.
@@ -823,7 +825,7 @@ Schema "public" is up to date. No migration necessary.
 기존 사용자 ID 1과 2 및 `users_seq.last_value=51`도 재시작 후 유지됐다. 재시작한
 애플리케이션에서 새 사용자를 저장했을 때 ID 52가 충돌 없이 생성됐다.
 
-#### benchmark 독립 초기화
+##### benchmark 독립 초기화
 
 local을 중지하고 새로운 benchmark named volume을 생성했다. benchmark 애플리케이션
 실행 전 `public` 스키마의 테이블 수는 0이었고, benchmark 프로필 실행 후 V1이
@@ -841,7 +843,7 @@ benchmark를 중지하고 기존 local volume을 다시 연결했을 때 local �
 history 및 sequence 상태가 그대로 유지됐다. 이를 통해 두 환경의 스키마 이력, 데이터
 및 sequence 현재 상태가 서로 격리됐음을 확인했다.
 
-#### 실제 `.env` 최종 검증
+##### 실제 `.env` 최종 검증
 
 후속 역검증에서는 임시 환경 파일이 아니라 실제 `.env`를 사용해 두 profile을 각각
 실행했다.
@@ -860,7 +862,7 @@ benchmark
 
 실제 비밀번호 값은 문서 및 Git에 기록하지 않는다.
 
-### 3.5. 1-2 최종 검증 결과
+#### 1-2 최종 검증 결과
 
 1-2 구현 후 다음 검증을 통과했다.
 
@@ -903,9 +905,9 @@ V1__create_base_schema.sql
 - 전체 회귀 테스트와 운영 JAR 생성이 성공한다.
 - 검증용 컨테이너, volume 및 임시 파일은 검증 후 제거한다.
 
-## 4. 1-3. 기존 기능과 benchmark 데이터 동등성 검증
+### 1-3. 기존 기능과 benchmark 데이터 동등성 검증
 
-### 4.1. 동등성 기준과 검증 범위
+#### 1-3-A. 동등성 기준과 검증 범위
 
 PostgreSQL 이전의 동등성은 데이터베이스 내부 구현이 물리적으로 같은지가 아니라,
 같은 요청과 조건에서 관찰 가능한 애플리케이션 결과와 benchmark 데이터의 논리적
@@ -949,7 +951,7 @@ benchmark 데이터 기준점
 수 있으므로 H2와 PostgreSQL 간 비교 대상에서 제외한다. ID의 유일성, 관계 참조와
 활성·삭제 상태는 반드시 유지한다.
 
-### 4.2. PostgreSQL 기존 기능 동등성 검증
+#### 1-3-B. PostgreSQL 기존 기능 동등성 검증
 
 빠른 H2 회귀 테스트와 PostgreSQL 통합 테스트의 실행 경로를 분리했다.
 
@@ -1003,7 +1005,7 @@ PostgreSQL image: postgres:18.4
 
 PostgreSQL 기존 기능 동등성 테스트 9개가 모두 통과했다.
 
-### 4.3. PostgreSQL benchmark generator와 데이터 동등성
+#### 1-3-C. PostgreSQL benchmark generator와 데이터 동등성
 
 기존 generator는 H2 JDBC URL에 `benchmark-data` 경로가 포함됐는지 확인했다.
 PostgreSQL URL에는 파일 경로가 없으므로 실제 연결된 DB의 JDBC 식별 정보와 데이터
@@ -1077,7 +1079,7 @@ seed: 20260802
 모든 게시글의 이미지가 `NULL`이고 좋아요, 댓글 및 조회수 카운터가 0이며, 모든
 사용자의 프로필 이미지가 `NULL`인 것도 확인했다.
 
-### 4.4. 반복 실행과 최종 역검증
+#### 1-3-D. 반복 실행과 최종 역검증
 
 Gradle의 이전 성공 결과를 재사용하지 않도록 다음 전체 검증을 두 번 실행했다.
 
@@ -1126,9 +1128,9 @@ git diff --check
 - 캐시 없이 전체 검증을 두 번 실행해 깨끗한 DB에서 결과가 재현됨을 확인했다.
 - Testcontainers가 테스트 후 PostgreSQL 컨테이너를 정리함을 확인했다.
 
-## 5. 1-4. 재현성과 전체 회귀 검증 및 LIKE 기준선 측정 준비
+### 1-4. 재현성과 전체 회귀 검증 및 LIKE 기준선 측정 준비
 
-### 5.1. 10만 건 canonical benchmark 데이터 생성·검증
+#### 1-4-A. 10만 건 canonical benchmark 데이터 생성·검증
 
 검색 방식 비교의 원본으로 사용할 데이터를 `postgres-benchmark`에 생성했다.
 
@@ -1206,7 +1208,7 @@ tsvector 컬럼: 없음
 다르면 예외를 발생시키며, 원본 DB와 dump 복원본에서 모두 통과했다. 검증을 마친 현재
 `community_benchmark`를 canonical dataset 원본으로 확정했다.
 
-### 5.2. dump·checksum·restore 기반 재현성 검증
+#### 1-4-B. dump·checksum·restore 기반 재현성 검증
 
 canonical 원본을 검색 방식마다 같은 상태로 복원하기 위해 PostgreSQL custom-format의
 data-only dump를 생성했다.
@@ -1295,7 +1297,7 @@ sequence도 원본과 복원본에서 동일했다.
 `ANALYZE`도 완료했다. 역검증에 사용한 임시 DB는 삭제했고 canonical 원본과 dump는
 보존했다.
 
-### 5.3. 전체 회귀 검증과 실행 환경 격리
+#### 1-4-C. 전체 회귀 검증과 실행 환경 격리
 
 일반 개발용 DB와 benchmark DB를 동시에 확인해 서로 다른 database, port 및 volume을
 사용하는지 검증했다.
@@ -1346,7 +1348,7 @@ JAR SHA-256: 5db7f0045bc2da093291978e65b17f729813df6af965f214fc224e1966fbeccb
 H2는 테스트 runtime에만 존재하므로 benchmark 애플리케이션 실행 결과에 영향을 주지
 않는다.
 
-### 5.4. PostgreSQL LIKE 기준선 측정 조건 확정·준비
+#### 1-4-D. PostgreSQL LIKE 기준선 측정 조건 확정·준비
 
 현재 JPA의 `LOWER(column) LIKE '%keyword%'` 검색을 변경하지 않고 PostgreSQL 기준선을
 측정하기 위한 조건을 고정했다.
@@ -1463,7 +1465,7 @@ smoke의 단발 지연 시간은 JVM, DispatcherServlet 및 캐시 초기화의 
 성능 결과로 사용하지 않는다. `EXPLAIN ANALYZE`, 1 VU 3회 및 50 RPS 3회는 아직
 실행하지 않았다.
 
-### 5.5. 1-4 전체 역검증 결과
+#### 1-4 전체 역검증 결과
 
 1-4-A부터 D까지의 체크포인트를 실제 DB, dump, 테스트 결과 및 실행 파일에서 다시
 확인했다.
@@ -1490,9 +1492,9 @@ smoke의 단발 지연 시간은 JVM, DispatcherServlet 및 캐시 초기화의 
 따라서 PostgreSQL 이전, canonical 데이터 재현성, 전체 회귀 및 LIKE 기준선 측정 준비를
 포함한 1단계를 완료했다.
 
-## 6. 현재 상태와 다음 작업
+### PostgreSQL 이전 완료 상태와 다음 작업
 
-### 6.1. PostgreSQL 이전 완료 상태
+#### PostgreSQL 이전 완료 상태
 
 ```text
 1. PostgreSQL 이전 기반
@@ -1506,7 +1508,7 @@ smoke의 단발 지연 시간은 JVM, DispatcherServlet 및 캐시 초기화의 
 환경과 재현 가능한 데이터셋은 완성됐지만 PostgreSQL LIKE의 공식 성능 기준선은 아직
 측정하지 않았다. `pg_trgm`과 Full Text Search도 적용하지 않았다.
 
-### 6.2. 다음 단계의 경계
+#### 다음 단계의 경계
 
 다음 단계는 `2. PostgreSQL LIKE 기준선 측정`이다.
 
@@ -1520,7 +1522,7 @@ smoke의 단발 지연 시간은 JVM, DispatcherServlet 및 캐시 초기화의 
 LIKE 기준선을 확정한 이후에만 같은 canonical dump와 실행 조건으로 `pg_trgm` 및 Full
 Text Search 실험을 진행한다.
 
-## 7. 2. PostgreSQL LIKE 기준선 측정
+## 2. PostgreSQL LIKE 기준선 측정
 
 PostgreSQL 이전만 완료한 V1 상태에서 기존 JPA
 `LOWER(column) LIKE '%keyword%'` 검색의 실행 계획과 애플리케이션 성능을 공식
@@ -1535,7 +1537,7 @@ PostgreSQL 이전만 완료한 V1 상태에서 기존 JPA
 | 2-2 | 단일 사용자·50 RPS 공식 성능 측정 | 완료 |
 | 2-3 | 결과 분석과 PostgreSQL LIKE 기준선 확정 | 완료 |
 
-### 7.1. 2-1. 측정 상태 확정과 LIKE 실행 계획 분석
+### 2-1. 측정 상태 확정과 LIKE 실행 계획 분석
 
 #### 2-1-A. 공식 측정 대상 상태 확정
 
@@ -1923,7 +1925,7 @@ canonical 검증과 `ANALYZE`가 이미 데이터를 읽었으므로 첫 실행�
 
 따라서 2-2의 단일 사용자 및 50 RPS 공식 성능 측정을 시작할 수 있다고 판정했다.
 
-### 7.2. 2-2. 단일 사용자·50 RPS 공식 성능 측정
+### 2-2. 단일 사용자·50 RPS 공식 성능 측정
 
 2-1에서 분석한 PostgreSQL LIKE 상태를 애플리케이션 전체 경로에서 측정했다. 공식
 요청에는 HTTP, Spring MVC, Hibernate, JDBC, PostgreSQL 실행, DTO 변환 및 JSON
@@ -2137,7 +2139,7 @@ benchmark-data/postgresql/like-baseline/results/
 기준선과의 정량 비교, 실행 계획과 API 지연 시간의 관계 및 PostgreSQL LIKE 기준선의
 최종 해석은 2-3에서 진행한다.
 
-### 7.3. 2-3. 결과 분석과 PostgreSQL LIKE 기준선 확정
+### 2-3. 결과 분석과 PostgreSQL LIKE 기준선 확정
 
 2-1 실행 계획과 2-2 공식 성능 결과를 연결하고 기존 H2 기준선과 비교했다. COMMON
 첫 페이지 결과만으로 LIKE 전체 성능을 판단하지 않도록 RARE 검색어를 같은 조건으로
@@ -2445,12 +2447,13 @@ FTS는 동일 결과를 강제하지 않고 토큰화, 검색 결과 수, 정렬
 유지하면서 COMMON과 RARE 성능을 개선할 수 있는지 검증한다. 이후 Full Text Search를
 같은 원칙으로 측정하고 검색 의미와 운영 비용까지 함께 비교한다.
 
-## 8. 3. pg_trgm·Full Text Search 비교
+## 3. pg_trgm·Full Text Search 실험
 
 PostgreSQL LIKE 기준선에서 확인한 선택도 민감도를 개선할 검색 후보를 같은 canonical
 10만 건과 부하 조건으로 비교한다. 3-1에서는 기존 부분 문자열 검색 의미를 유지하는
 `pg_trgm`을 먼저 검증한다. 3-2에서는 단어 기반 검색과 관련도 정렬을 제공하는 Full
-Text Search를 별도로 검증하고, 3-3에서 검색 의미·성능·운영 비용을 함께 비교한다.
+Text Search를 별도로 검증하고, 4단계에서 검색 의미·성능·운영 비용을 함께
+비교한다.
 
 ```text
 3-1. pg_trgm
@@ -2460,13 +2463,14 @@ Text Search를 별도로 검증하고, 3-3에서 검색 의미·성능·운영 �
 └── 3-1-D. 단일 사용자·50 RPS 측정과 후보 결론
 
 3-2. Full Text Search
-└── 다음 단계
+├── 3-2-A. Full Text Search 검색 정책·구조 설계 및 적용
+└── 3-2-B. 실행 계획·공식 성능 측정 및 후보 결론
 
-3-3. LIKE·pg_trgm·Full Text Search 최종 비교
-└── 세 후보 측정 완료 후 진행
+4. LIKE·pg_trgm·Full Text Search 비교
+└── 검색 의미·성능·운영 비용·적용 판정 통합
 ```
 
-### 8.1. 3-1. pg_trgm
+### 3-1. pg_trgm
 
 `pg_trgm`은 문자열을 연속된 세 글자 단위로 나누어 검색 후보를 찾을 수 있게 한다.
 이번 단계의 목적은 새로운 검색 의미를 도입하는 것이 아니라, 기존
@@ -3153,3 +3157,852 @@ FTS는 LIKE와 검색 결과를 같게 만드는 후보가 아니라 토큰·사
 정렬이라는 다른 검색 의미를 제공한다. 따라서 3-2에서는 먼저 허용할 검색 의미와 결과
 차이를 설계한 뒤, 같은 COMMON·RARE 데이터와 부하 조건에서 실행 계획·성능·운영
 비용을 측정한다.
+
+### 3-2. PostgreSQL Full Text Search 실험
+
+Full Text Search는 `LIKE` 또는 `pg_trgm`과 다른 검색 의미를 제공한다. 문자열
+전체에서 임의의 부분 문자열을 찾는 대신, 문서와 질의를 lexeme 단위로 변환해
+단어 일치와 관련도를 계산한다. 따라서 이번 단계에서는 부분 문자열 결과 동등성을
+목표로 두지 않고, 선택한 토큰 정책에서의 결과 특성과 성능을 같이 검증했다.
+
+#### 3-2-A. Full Text Search 검색 정책·구조 설계 및 적용
+
+##### 검색 의미 정책
+
+첫 번째 FTS 후보는 PostgreSQL의 `simple` 검색 구성과
+`plainto_tsquery`를 사용한다.
+
+```sql
+to_tsvector('simple', title)
+to_tsvector('simple', content)
+plainto_tsquery('simple', :keyword)
+```
+
+```text
+검색 의미
+├── 완전한 lexeme 단위 일치
+├── 여러 단어 입력은 기본 AND 조건
+├── 대소문자를 구분하지 않음
+├── 특수문자는 `plainto_tsquery`가 질의 구문이 아닌 일반 텍스트로 해석
+├── prefix 연산자 `:*` 사용하지 않음
+└── 한국어 형태소 분석·어간 추출은 제공하지 않음
+```
+
+`simple`은 토큰의 소문자화와 정확한 단어 비교에는 사용할 수 있지만, 한국어
+조사·어미를 분리하지 않는다. 따라서 이 실험은 완성된 한국어 검색 품질을
+증명하는 것이 아니라, PostgreSQL 기본 기능으로 정의한 단어 검색 후보의 특성을
+측정하는 범위로 한정한다.
+
+##### 정렬과 커서 정책
+
+기존 HTTP API의 정렬과 커서 계약은 유지했다.
+
+```text
+GET /posts
+├── ORDER BY post_id DESC
+├── Long 타입 next_cursor
+├── size + 1 조회
+└── has_next 계산
+```
+
+관련도 정렬은 별도 SQL로 실행 계획과 비용만 측정했다. 관련도가 동일할 때
+`post_id DESC`를 사용하더라도 다음 페이지를 안정적으로 조회하려면
+`(relevance, post_id)` 복합 커서와 응답 계약 변경이 필요하다. 이 변경은 기존 API
+동작을 바꾸므로 이번 HTTP 공식 부하 측정에는 포함하지 않았다.
+
+##### generated `tsvector`와 GIN 구조
+
+제목과 본문의 scope를 독립적으로 지원하기 위해 stored generated column과
+부분 GIN 인덱스를 각각 두었다.
+
+```sql
+ALTER TABLE posts
+    ADD COLUMN title_search_vector TSVECTOR
+        GENERATED ALWAYS AS (
+            to_tsvector('simple'::regconfig, COALESCE(title, ''))
+        ) STORED,
+    ADD COLUMN content_search_vector TSVECTOR
+        GENERATED ALWAYS AS (
+            to_tsvector('simple'::regconfig, COALESCE(content, ''))
+        ) STORED;
+
+CREATE INDEX idx_posts_active_title_fts_gin
+    ON posts USING GIN (title_search_vector)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_posts_active_content_fts_gin
+    ON posts USING GIN (content_search_vector)
+    WHERE deleted_at IS NULL;
+```
+
+`tsvector` 생성 규칙을 DB 스키마에 고정해 INSERT·UPDATE 시 원문과 검색 벡터가
+다른 상태가 되지 않도록 했다. 또한 모든 검색에서 soft delete된 게시글을
+제외하므로 `deleted_at IS NULL` 부분 인덱스를 사용했다.
+
+##### 실험 DB와 애플리케이션 전환
+
+순수 LIKE와 pg_trgm DB를 변경하지 않고 별도 DB를 구성했다.
+
+```text
+community_benchmark_fts
+├── Flyway V1
+├── 동일 canonical data-only dump
+├── title_search_vector·content_search_vector
+├── 제목·본문 FTS GIN
+└── pg_trgm extension 없음
+```
+
+검색 후보를 실험 중이므로 FTS DDL은 Flyway V2로 승격하지 않았다.
+`benchmark/postgresql/fts/`의 적용·제거·검증 스크립트로 관리했다.
+
+애플리케이션에는 다음 전환점을 추가했다.
+
+```yaml
+app:
+  search:
+    mode: ${APP_SEARCH_MODE:like}
+```
+
+`like`를 기본값으로 두어 기존 실행 환경의 행동을 바꾸지 않고, `fts`일 때만
+FTS repository를 호출한다. native SQL의 첫 쿼리는 정렬된 ID를 `size + 1`개
+가져오고, 두 번째 JPQL이 게시글과 작성자를 함께 조회한다. 조회한 엔티티는
+첫 쿼리의 ID 순서로 재배열해 커서 계약을 유지했다.
+
+##### 적용 및 검색 특성 검증
+
+최종 준비 원자료는 다음 디렉터리에 저장했다.
+
+```text
+benchmark-data/postgresql/fts/
+└── postgresql-fts-preparation-20260805-132302-kst
+```
+
+| 작업 | 소요 시간 |
+| --- | ---: |
+| generated `tsvector` 컬럼 추가 | 22.641초 |
+| 제목 GIN 생성 | 254.972ms |
+| 본문 GIN 생성 | 524.825ms |
+| `ANALYZE posts` | 317.247ms |
+
+| 검색 사례 | FTS 결과 |
+| --- | ---: |
+| COMMON 전체 | 9,500 |
+| RARE 전체 | 95 |
+| SCOPE 제목 | 950 |
+| SCOPE 본문 | 950 |
+| COMMON 부분 문자열 `qzcommon` | 0 |
+| NEVER 전체 | 0 |
+
+COMMON·RARE·SCOPE는 generator가 marker를 독립된 단어로 삽입했기 때문에
+LIKE와 건수가 같다. 반면 LIKE에서는 일치하는 `qzcommon`이 FTS에서 0건인
+것은 prefix가 아닌 정확한 lexeme 일치라는 검색 의미 차이를 실제 데이터로
+확인한 결과다.
+
+HTTP smoke에서 COMMON과 RARE는 각각 10건과 `has_next=true`를 반환했고,
+부분 문자열은 0건을 반환했다. Testcontainers PostgreSQL 18.4 통합 테스트는
+기존 14개에 FTS 검색 특성 테스트 1개를 더한 총 15개가 통과했다.
+
+#### 3-2-B. 실행 계획·공식 성능 측정 및 후보 결론
+
+##### 실행 계획 수집 범위
+
+두 정렬 정책을 별도 SQL로 측정했다.
+
+```text
+시간순 쿼리
+├── FTS 조건으로 ID size + 1개 조회
+├── ORDER BY post_id DESC
+└── 현재 HTTP API와 동일한 정렬·커서 계약
+
+관련도 쿼리
+├── 2 * title ts_rank_cd + content ts_rank_cd
+├── ORDER BY relevance DESC, post_id DESC
+└── SQL 특성·비용만 측정
+```
+
+각 쿼리를 COMMON과 RARE로 나누어
+`EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS)`로 3회씩 수집했다.
+
+```text
+benchmark-data/postgresql/fts/explain/
+└── postgresql-fts-plan-cost-20260805-133742-kst
+```
+
+##### 시간순 FTS 실행 계획
+
+COMMON과 RARE 모두 GIN이 아닌 `idx_posts_active_cursor` B-tree 인덱스를
+선택했다.
+
+```text
+Limit
+└── Index Scan using idx_posts_active_cursor
+    ├── post_id DESC 순서로 조회
+    ├── title_search_vector @@ query
+    └── content_search_vector @@ query를 Filter로 평가
+```
+
+| 실행 | COMMON | RARE |
+| --- | ---: | ---: |
+| 1회 | 1.810ms | 116.895ms |
+| 2회 | 0.216ms | 12.552ms |
+| 3회 | 0.329ms | 12.432ms |
+| 중앙값 | 0.329ms | 12.552ms |
+
+COMMON은 약 101건을 검사해 11건을 찾고 중단했으며, RARE는 약 10,001건을
+검사해 11건을 찾았다. 두 쿼리 모두 B-tree가 `post_id DESC`를 이미 제공하므로
+별도 정렬 없이 `LIMIT 11` 조기 종료가 가능했다.
+
+FTS GIN이 존재하지만 사용되지 않은 것은 인덱스 적용 실패가 아니다.
+옵티마이저가 현재의 정렬과 LIMIT에서 GIN 후보 전체 수집·정렬보다 기본키
+조기 종료를 더 저렴하게 판단한 결과다. 순수 LIKE와 비교하면 검색 벡터가
+미리 생성돼 있어 각 행에서 `LOWER()`와 본문 부분 문자열 비교를 반복하는
+비용을 줄였다.
+
+단, 이 실행 계획은 ID만 가져오는 첫 native query의 결과다. 실제 HTTP에서는
+선택된 게시글과 작성자를 가져오는 두 번째 JPQL이 추가된다. 따라서 SQL 시간은
+전체 API 응답 시간으로 사용하지 않고, 최종 비교는 HTTP 부하 결과로 했다.
+
+##### 관련도 FTS 실행 계획
+
+관련도 정렬은 제목 가중치 2.0, 본문 가중치 1.0을 적용했다.
+
+```sql
+ORDER BY (
+    2.0 * ts_rank_cd(title_search_vector, query)
+    + ts_rank_cd(content_search_vector, query)
+) DESC, post_id DESC
+```
+
+```text
+Limit
+└── Sort: relevance DESC, post_id DESC
+    └── Bitmap Heap Scan
+        └── BitmapOr
+            ├── title FTS GIN
+            └── content FTS GIN
+```
+
+| 실행 | COMMON | RARE |
+| --- | ---: | ---: |
+| 1회 | 395.901ms | 0.957ms |
+| 2회 | 152.530ms | 1.673ms |
+| 3회 | 37.847ms | 0.956ms |
+| 중앙값 | 152.530ms | 0.957ms |
+
+COMMON은 GIN으로 9,500건을 수집하고 관련도를 계산한 뒤 top-N 정렬했다.
+두 번째 실행의 shared buffer는 `hit=18,862`, `read=2,727`, 합계 21,589개였다.
+RARE는 GIN 후보 95건과 heap block 95개만 처리해 중앙값 0.957ms였다.
+
+이 결과는 희소한 단어의 관련도 검색은 빠르지만 COMMON처럼 결과가 많으면
+고비용이 될 수 있음을 보여준다. 또한 다음 페이지를 위한 복합 커서와 relevance
+결과 품질 픽스처가 없으므로, 현재 상태의 관련도 검색을 운영 후보로 판정하지
+않는다.
+
+##### 공식 HTTP 측정 조건
+
+LIKE·pg_trgm과 같은 호스트, 애플리케이션, JVM, Hikari 및 k6 조건을
+사용했다.
+
+```text
+Application
+├── Java: Eclipse Temurin 21.0.11
+├── JVM heap: 1GiB / 1GiB
+├── Spring profile: benchmark
+├── server port: 18084
+├── Hikari pool: 10 / 10
+├── generator: disabled
+├── app.search.mode: fts
+└── database: community_benchmark_fts
+
+k6
+├── smoke: 1 VU, 1 iteration
+├── warm-up: 1 VU, 30초
+├── single user: 1 VU, 60초, 3회
+└── target load: 50 RPS, 60초, pre-allocated VUs 50, 3회
+```
+
+##### COMMON 공식 성능
+
+공식 원자료는 다음 디렉터리에 저장했다.
+
+```text
+본 측정
+└── benchmark-data/postgresql/fts/performance/
+    postgresql-fts-common-20260805-133851-kst
+
+단일 사용자 보충 측정
+└── benchmark-data/postgresql/fts/performance/
+    postgresql-fts-common-single-user-supplement-20260805-135609-kst
+```
+
+COMMON 단일 사용자 3회차에서 Docker k6 client가 정상 HTTP 10,200건을
+처리한 뒤 약 30초 정지했고 `dial: i/o timeout` 1건이 발생했다. 오류 0
+조건을 충족하지 못했으므로 `INVALID-single-user-3.txt`로 분리하고, 동일
+조건의 보충 측정 1회로만 대체했다. 공식 집계 선택은
+`OFFICIAL-RUN-SELECTION.txt`에 기록했다.
+
+| 실행 | 요청 | 처리량 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 13,847 | 230.759 RPS | 3.604ms | 3.039ms | 6.094ms | 9.275ms | 62.971ms | 0 |
+| 2회 | 13,598 | 226.624 RPS | 3.696ms | 3.242ms | 6.366ms | 9.783ms | 50.109ms | 0 |
+| 보충 | 13,081 | 217.998 RPS | 3.802ms | 3.195ms | 6.654ms | 12.429ms | 106.922ms | 0 |
+| 요약값의 중앙값 | 13,598 | 226.624 RPS | 3.696ms | 3.195ms | 6.366ms | 9.783ms | 62.971ms | 0 |
+
+| 지표 | LIKE | FTS | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 4.15ms | 3.696ms | 10.94% 감소 |
+| p50 | 3.96ms | 3.195ms | 19.33% 감소 |
+| p95 | 5.83ms | 6.366ms | 9.19% 증가 |
+| p99 | 8.04ms | 9.783ms | 21.68% 증가 |
+| 처리량 | 184.66 RPS | 226.624 RPS | 22.73% 증가 |
+
+COMMON 50 RPS 결과는 다음과 같다.
+
+| 실행 | 완료 | 실제 처리량 | 미시작 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 3,001 | 50.008 RPS | 0 | 9.048ms | 6.933ms | 13.817ms | 47.102ms | 337.551ms | 0 |
+| 2회 | 3,001 | 50.010 RPS | 0 | 8.404ms | 6.957ms | 13.529ms | 32.003ms | 239.890ms | 0 |
+| 3회 | 3,001 | 50.009 RPS | 0 | 9.055ms | 6.861ms | 13.875ms | 64.732ms | 277.566ms | 0 |
+| 요약값의 중앙값 | 3,001 | 50.009 RPS | 0 | 9.048ms | 6.933ms | 13.817ms | 47.102ms | 277.566ms | 0 |
+
+| 지표 | LIKE | FTS | 변화 |
+| --- | ---: | ---: | ---: |
+| 평균 | 6.81ms | 9.048ms | 32.86% 증가 |
+| p50 | 6.17ms | 6.933ms | 12.36% 증가 |
+| p95 | 9.44ms | 13.817ms | 46.37% 증가 |
+| p99 | 18.01ms | 47.102ms | 약 2.62배 |
+| 실제 처리량 | 49.999 RPS | 50.009 RPS | 목표 달성 |
+| 미시작 요청 | 0 | 0 | 없음 |
+
+COMMON은 LIKE보다 tail latency가 증가했지만 세 번 모두 약 50 RPS,
+미시작 0, HTTP 오류 0 및 기능 검사 실패 0을 충족했다. pg_trgm COMMON의
+p50 1,025.02ms와 미시작 중앙값 224건에 비해서는 크게 안정화됐다.
+
+##### RARE 공식 성능
+
+공식 원자료는 다음 디렉터리에 저장했다.
+
+```text
+benchmark-data/postgresql/fts/performance/
+└── postgresql-fts-rare-20260805-134624-kst
+```
+
+| 실행 | 요청 | 처리량 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 4,473 | 74.539 RPS | 13.127ms | 12.597ms | 16.628ms | 22.836ms | 78.079ms | 0 |
+| 2회 | 4,400 | 73.314 RPS | 13.331ms | 12.703ms | 17.422ms | 23.556ms | 84.785ms | 0 |
+| 3회 | 4,195 | 69.906 RPS | 13.981ms | 13.005ms | 18.994ms | 28.145ms | 346.548ms | 0 |
+| 요약값의 중앙값 | 4,400 | 73.314 RPS | 13.331ms | 12.703ms | 17.422ms | 23.556ms | 84.785ms | 0 |
+
+| 지표 | LIKE | FTS | 변화 |
+| --- | ---: | ---: | ---: |
+| p50 | 133.55ms | 12.703ms | 약 10.51배 개선 |
+| p95 | 142.59ms | 17.422ms | 약 8.18배 개선 |
+| 처리량 | 7.380 RPS | 73.314 RPS | 약 9.93배 증가 |
+
+RARE 50 RPS 결과는 다음과 같다.
+
+| 실행 | 완료 | 실제 처리량 | 미시작 | 평균 | p50 | p95 | p99 | 최대 | 오류 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1회 | 3,001 | 50.004 RPS | 0 | 13.529ms | 12.782ms | 16.803ms | 26.007ms | 96.190ms | 0 |
+| 2회 | 3,001 | 50.004 RPS | 0 | 13.390ms | 12.633ms | 17.166ms | 24.767ms | 81.062ms | 0 |
+| 3회 | 3,001 | 50.005 RPS | 0 | 13.293ms | 12.757ms | 16.375ms | 21.909ms | 59.825ms | 0 |
+| 요약값의 중앙값 | 3,001 | 50.004 RPS | 0 | 13.390ms | 12.757ms | 16.803ms | 24.767ms | 81.062ms | 0 |
+
+| 지표 | LIKE | pg_trgm | FTS | FTS 판정 |
+| --- | ---: | ---: | ---: | --- |
+| p50 | 252.85ms | 6.78ms | 12.757ms | LIKE 대비 약 19.82배 개선 |
+| p95 | 1,096.34ms | 9.27ms | 16.803ms | LIKE 대비 약 65.25배 개선 |
+| 실제 처리량 | 48.724 RPS | 50.013 RPS | 50.004 RPS | 목표 달성 |
+| 미시작 | 56 | 0 | 0 | 제거 |
+
+FTS는 RARE 50 RPS에서 LIKE의 대량 행 검사 비용을 줄였고 세 번 모두
+목표를 달성했다. 다만 pg_trgm p50 6.78ms와 비교하면 FTS 12.757ms는
+약 1.88배 느리다.
+
+##### 저장 공간과 운영 비용
+
+| 항목 | 순수 LIKE DB | FTS DB | 차이 |
+| --- | ---: | ---: | ---: |
+| posts heap | 130,973,696 bytes | 173,686,784 bytes | +42,713,088 bytes, 약 40.73MiB |
+| posts 인덱스 전체 | 6,946,816 bytes | 12,124,160 bytes | +5,177,344 bytes |
+| posts 전체 relation | 173,875,200 bytes | 318,308,352 bytes | +144,433,152 bytes, 약 137.74MiB |
+
+posts 전체 relation은 순수 LIKE 대비 약 83.07% 증가했고 heap은 약
+32.61% 증가했다. FTS GIN 두 개의 정확한 합계는 6,971,392 bytes,
+약 6.65MiB다.
+
+```text
+title_search_vector
+├── SUM(pg_column_size): 19,801,988 bytes
+└── 행당 평균: 약 198.02 bytes
+
+content_search_vector
+├── SUM(pg_column_size): 128,018,468 bytes
+└── 행당 평균: 약 1,280.18 bytes
+```
+
+`pg_column_size` 합계와 relation 크기 차이에는 row layout, page 여유 공간,
+TOAST와 압축 등이 포함되므로 서로 단순 합산하지 않는다. 운영 관점의
+저장 공간 비교는 전체 relation 크기를 사용하고, FTS 인덱스 자체 비용은
+두 GIN의 크기로 보고한다.
+
+stored generated column과 GIN은 게시글 삽입·제목·본문 수정·soft delete 시
+재계산과 인덱스 유지 비용을 발생시킨다. 이번 단계에서는 읽기 성능 비교의
+상태를 보전하기 위해 쓰기 부하, WAL 증가와 VACUUM 영향을 별도로 측정하지
+않았다. 따라서 이 비용을 정성적 위험으로만 기록하고 수치로 단정하지 않는다.
+
+##### 3-2 후보 결론
+
+정확한 단어 검색과 `post_id DESC` 정렬을 사용한 FTS는 COMMON과 RARE
+모두 50 RPS를 달성했고 미시작 요청과 HTTP 오류가 없었다. 순수 LIKE에서
+느린 RARE를 크게 개선하면서 pg_trgm이 실패한 COMMON 부하도 안정적으로
+처리했으므로 최종 비교 후보로 유지한다.
+
+다만 다음 사항은 성능과 독립적으로 최종 결정에 반영해야 한다.
+
+- 부분 문자열과 prefix 검색이 동작하지 않는다.
+- 여러 단어는 기본 AND 의미를 갖는다.
+- `simple` 구성은 한국어 형태소 분석을 제공하지 않는다.
+- stored vector와 GIN으로 posts 전체 relation이 약 83.07% 증가했다.
+- 쓰기 지연·WAL·VACUUM 비용은 아직 수치로 측정하지 않았다.
+
+관련도 정렬은 GIN이 제공하는 추가 가치를 확인한 탐색 후보이지만, COMMON
+SQL 중앙값 152.530ms와 복합 커서 미구현, 결과 품질 검증 미수행 및 HTTP
+부하 미측정 때문에 현재 운영 후보로는 확정하지 않는다.
+
+#### 3-2 전체 체크포인트 역검증
+
+##### 정책·구조·격리
+
+- FTS를 LIKE와 다른 단어 기반 검색 의미로 정의했다.
+- `simple`, `plainto_tsquery`, prefix 미사용 정책을 SQL과 애플리케이션에
+  동일하게 적용했다.
+- 시간순 API는 `post_id DESC`와 기존 Long cursor를 유지했다.
+- 관련도 API에 필요한 복합 커서를 구현한 것처럼 기록하지 않았다.
+- `community_benchmark_fts`를 별도로 생성했고 pg_trgm이 없음을 검증했다.
+- FTS DDL을 Flyway versioned migration으로 승격하지 않았다.
+
+##### 데이터·기능
+
+- canonical dump SHA-256을 검증한 뒤 복원했다.
+- 사용자 100명, 게시글 100,000건, 활성 95,000건, 삭제 5,000건과 marker
+  및 본문 길이 분포가 유지됐다.
+- generated `tsvector` 컬럼 두 개와 valid·ready 부분 GIN 두 개를 검증했다.
+- COMMON·RARE·SCOPE·NEVER과 부분 문자열 결과로 의미 차이를 검증했다.
+- HTTP smoke와 FTS 통합 테스트가 통과했다.
+
+##### 실행 계획·성능·운영 비용
+
+- 시간순 COMMON·RARE와 관련도 COMMON·RARE 실행 계획을 각각 3회 수집했다.
+- 시간순은 B-tree·LIMIT 조기 종료, 관련도순은 GIN·전체 후보 정렬이
+  선택됨을 확인했다.
+- SQL ID 쿼리와 두 번째 entity fetch를 포함한 HTTP 시간을 구분했다.
+- COMMON·RARE 각각 smoke, warm-up, 1 VU 60초 3회, 50 RPS 60초 3회를
+  공식 조건으로 측정했다.
+- COMMON 무효 1 VU 실행을 공식 집계에서 제외하고 동일 조건 보충 1회로
+  대체한 규칙과 이유를 기록했다.
+- COMMON·RARE 50 RPS 모두 미시작 0, HTTP 오류 0, 기능 검사 실패 0을
+  확인했다.
+- FTS GIN 합계, vector 크기와 posts relation 증가를 기록했다.
+- 미측정 쓰기·WAL·VACUUM 비용을 실측값처럼 단정하지 않았다.
+
+##### 원자료·회귀 검증
+
+- 준비, 실행 계획, COMMON 본·보충 측정, RARE 측정의 `SHA256SUMS`를
+  다시 검증했다.
+- 측정 전후 canonical 데이터와 FTS 컬럼·인덱스 상태가 유지됐다.
+- `./gradlew test postgresIntegrationTest`가 성공했다.
+- `git diff --check`가 통과했다.
+- 공식 측정 후 Spring Boot 애플리케이션을 정상 종료했다.
+
+#### 3-2 완료 판정
+
+FTS 시간순 단어 검색은 COMMON과 RARE 모두 50 RPS 목표를 달성했다.
+COMMON은 p50 6.933ms, RARE는 p50 12.757ms였고 두 사례 모두 미시작
+요청과 오류가 없었다. 따라서 성능 측면에서 최종 비교 후보로 남긴다.
+
+그러나 이 결과는 LIKE의 부분 문자열 검색을 더 빠르게 실행한 것이 아니라
+검색 의미를 완전한 lexeme 기반으로 바꿔 측정한 결과다. 부분 문자열·한국어
+처리·복합 질의·관련도 페이징 품질과 저장·쓰기 비용을 성능과 함께 보지
+않고 최종 방식으로 선택할 수는 없다.
+
+> Full Text Search는 단어 기반 검색을 제품 요구사항으로 받아들일 수 있다면,
+> 이번 조건에서 COMMON과 RARE를 모두 안정적으로 처리한 유효한 후보다.
+> 관련도 정렬은 성능·커서·결과 품질을 추가로 설계한 뒤 별도로 검증해야 한다.
+
+다음 4단계에서는 LIKE·pg_trgm·FTS의 COMMON·RARE 성능, 검색 의미,
+정렬·페이징, 저장 공간과 운영 복잡도를 한 번에 비교한다. PostgreSQL로
+이전했다는 사실이나 특정 인덱스 적용 여부만으로 선택하지 않고, 프로젝트가
+우선할 검색 계약을 먼저 확정한 뒤 적용 방식을 판정한다.
+
+## 4. LIKE·pg_trgm·Full Text Search 비교
+
+세 방식을 동일한 canonical 10만 건 데이터와 COMMON·RARE 검색어, 1 VU 및
+50 RPS 부하 조건에서 비교했다. 단, LIKE와 pg_trgm은 부분 문자열이라는
+같은 검색 의미를 사용하지만 FTS는 lexeme 기반 단어 검색이다. 따라서 FTS의
+성능을 LIKE의 같은 검색 결과를 더 빠르게 반환한 것으로 해석하지 않는다.
+
+### 4.1. 비교 기준
+
+최종 판정은 다음 순서로 진행한다.
+
+```text
+1. 검색 의미
+   └── 부분 문자열인가, 단어·lexeme인가
+
+2. 결과 계약
+   ├── 정렬은 post_id DESC인가, 관련도순인가
+   ├── 기존 Long cursor를 유지할 수 있는가
+   └── scope·soft delete·특수문자 규칙이 유지되는가
+
+3. 읽기 성능
+   ├── COMMON·RARE 모두 안정적인가
+   ├── 50 RPS를 달성하는가
+   └── 미시작 요청·HTTP 오류·기능 실패가 없는가
+
+4. 운영 비용
+   ├── 추가 컬럼·인덱스·저장 공간
+   ├── INSERT·UPDATE·soft delete 유지 비용
+   └── migration·백업·복구·모니터링 복잡도
+```
+
+즉, 인덱스를 사용했는지나 특정 p50이 가장 낮은지만으로 최종 방식을
+선택하지 않는다.
+
+### 4.2. 검색 의미·기능 비교
+
+| 항목 | LIKE | pg_trgm | Full Text Search |
+| --- | --- | --- | --- |
+| 기본 검색 단위 | 임의의 부분 문자열 | 임의의 부분 문자열 | 완전한 lexeme·단어 |
+| 기존 LIKE 결과 유지 | 기준 방식 | 가능 | 불가능 |
+| `qzcommon` → `qzcommona91x` | 일치 | 일치 | 불일치 |
+| 대소문자 무시 | `LOWER()` | 같은 LIKE 조건 | 검색 구성으로 처리 |
+| 여러 단어 | 입력 문자열 전체 포함 | 입력 문자열 전체 포함 | `plainto_tsquery` 기본 AND |
+| `%`, `_`, `\` | escape 후 literal 검색 | 동일 | token 경계로 해석 |
+| prefix 검색 | 부분 문자열로 가능 | 부분 문자열로 가능 | 이번 정책에서 불가능 |
+| 한국어 형태소 분석 | 없음 | 없음 | `simple`에는 없음 |
+| 관련도 정렬 | 없음 | 유사도를 별도 설계 가능 | `ts_rank_cd`로 설계 가능 |
+| 현재 공식 HTTP 정렬 | `post_id DESC` | `post_id DESC` | `post_id DESC` |
+| 현재 Long cursor 유지 | 가능 | 가능 | 시간순에서 가능 |
+| 관련도 cursor | 해당 없음 | 별도 설계 필요 | `(relevance, post_id)` 필요 |
+
+LIKE와 pg_trgm은 적용 전후 결과 스냅샷과 HTTP 통합 테스트로 같은 부분
+문자열 계약을 유지했다. FTS에서 COMMON·RARE·SCOPE 건수가 같았던 것은 marker가
+독립된 단어로 삽입된 실험 데이터의 특성이다. COMMON 조각 `qzcommon`이
+LIKE·pg_trgm에서는 일치하고 FTS에서는 0건이었던 결과가 세 방식의 의미 경계를
+보여준다.
+
+### 4.3. 실행 계획 비교
+
+#### LIKE
+
+```text
+Limit
+└── Index Scan Backward using pk_posts
+    ├── post_id DESC 순서
+    ├── LOWER(column) LIKE Filter
+    └── 11건을 찾으면 조기 종료
+```
+
+COMMON은 약 107건만 검사해 빠르게 종료했지만 RARE는 약 10,528건을
+검사했다. 최신 영역에 일치 행이 자주 나오면 매우 유리하고, 희소하거나 결과가
+없으면 검사 범위가 크게 늘어난다.
+
+#### pg_trgm
+
+```text
+Limit
+└── Sort: post_id DESC
+    └── Bitmap Heap Scan
+        └── BitmapOr
+            ├── title trigram GIN
+            └── content trigram GIN
+```
+
+GIN은 문자열 후보를 빠르게 찾지만 `post_id DESC` 순서를 제공하지 않는다.
+COMMON에서는 9,500건을 모두 수집·heap 재확인·조인·정렬한 뒤 11건을
+반환했다. RARE에서는 95건만 직접 찾아 LIKE의 대량 행 검사를 제거했다.
+
+#### Full Text Search 시간순
+
+```text
+Limit
+└── Index Scan using idx_posts_active_cursor
+    ├── post_id DESC 순서
+    ├── stored tsvector @@ tsquery Filter
+    └── 11건을 찾으면 조기 종료
+```
+
+시간순 FTS에서는 GIN이 아닌 cursor B-tree가 COMMON·RARE 모두 선택됐다.
+정렬과 LIMIT에서 GIN의 전체 후보 수집보다 B-tree 조기 종료가 저렴하다고
+판단한 결과다. LIKE와 비슷한 행 수를 검사하지만 stored vector에 `@@`를
+평가하므로 매 행의 긴 본문에 `LOWER()`와 부분 문자열 비교를 실행하는
+비용을 피했다.
+
+관련도순 FTS에서는 제목·본문 GIN으로 후보를 찾은 뒤 전체 관련도를
+계산·정렬했다. COMMON 중앙값은 152.530ms, RARE는 0.957ms였다.
+관련도순은 시간순 HTTP와 다른 API 계약이며 성능·결과 품질·복합 커서가
+완성되지 않았으므로 최종 운영 후보 판정에서 제외한다.
+
+#### SQL 비교의 경계
+
+LIKE·pg_trgm 실행 계획 SQL은 게시글·작성자 조인과 응답 컬럼을 포함했지만,
+FTS 실행 계획은 2단계 조회 중 첫 번째 ID query를 수집한 결과다. 따라서 SQL
+실행 시간을 세 방식의 최종 성능 순위로 직접 사용하지 않는다. 실행 계획은
+성능 원인을 설명하는 근거로 사용하고, 최종 성능 비교는 응답 생성 전체를 포함한
+HTTP 측정을 사용한다.
+
+### 4.4. 단일 사용자 성능 비교
+
+#### COMMON
+
+| 지표 | LIKE | pg_trgm | FTS 시간순 |
+| --- | ---: | ---: | ---: |
+| 요청 수 | 11,087 | 404 | 13,598 |
+| 처리량 | 184.660 RPS | 6.727 RPS | 226.624 RPS |
+| 평균 | 4.15ms | 147.78ms | 3.696ms |
+| p50 | 3.96ms | 143.18ms | 3.195ms |
+| p95 | 5.83ms | 176.94ms | 6.366ms |
+| p99 | 8.04ms | 228.11ms | 9.783ms |
+
+COMMON은 최신 영역에서 결과를 빠르게 찾을 수 있어 LIKE와 시간순 FTS가
+유리했다. pg_trgm은 9,500건 전체 후보 처리 비용으로 p50이 LIKE보다 약
+36.12배 악화됐다.
+
+#### RARE
+
+| 지표 | LIKE | pg_trgm | FTS 시간순 |
+| --- | ---: | ---: | ---: |
+| 요청 수 | 443 | 13,267 | 4,400 |
+| 처리량 | 7.380 RPS | 221.117 RPS | 73.314 RPS |
+| 평균 | 135.18ms | 4.00ms | 13.331ms |
+| p50 | 133.55ms | 3.79ms | 12.703ms |
+| p95 | 142.59ms | 5.68ms | 17.422ms |
+| p99 | 164.18ms | 8.39ms | 23.556ms |
+
+RARE에서는 pg_trgm이 가장 빨랐고 FTS도 LIKE를 크게 개선했다. p50
+기준 pg_trgm은 LIKE보다 약 35.26배 빨랐고, FTS는 LIKE보다 약
+10.51배 빨랐다. FTS는 pg_trgm보다 약 3.35배 느렸다.
+
+단일 사용자 처리량은 호출 사이의 대기 시간이 없는 closed-loop 결과이며, 일부
+측정에서 Docker k6 client scheduling 정지가 관찰됐다. 따라서 단일 사용자
+처리량은 보조 지표로 사용하고 HTTP 지연 분포와 50 RPS open-model 결과를
+함께 본다.
+
+### 4.5. 목표 50 RPS 성능 비교
+
+#### COMMON
+
+| 지표 | LIKE | pg_trgm | FTS 시간순 |
+| --- | ---: | ---: | ---: |
+| 완료 요청 | 3,001 | 2,777 | 3,001 |
+| 실제 처리량 | 49.999 RPS | 45.488 RPS | 50.009 RPS |
+| 목표 달성률 | 약 100.00% | 약 90.98% | 약 100.02% |
+| 미시작 요청 | 0 | 224 | 0 |
+| 평균 | 6.81ms | 1,020.95ms | 9.048ms |
+| p50 | 6.17ms | 1,025.02ms | 6.933ms |
+| p95 | 9.44ms | 1,177.39ms | 13.817ms |
+| p99 | 18.01ms | 1,306.66ms | 47.102ms |
+| HTTP 오류·검사 실패 | 0 | 0 | 0 |
+| 공식 판정 | 성공 | 실패 | 성공 |
+
+LIKE와 FTS는 COMMON 50 RPS를 모두 달성했다. FTS는 LIKE보다 p50이
+12.36%, p95가 46.37%, p99가 약 2.62배 증가했지만 미시작 요청이 없었다.
+pg_trgm은 VU 50을 소진하고 미시작 요청 중앙값 224건이 발생해 목표를
+달성하지 못했다.
+
+#### RARE
+
+| 지표 | LIKE | pg_trgm | FTS 시간순 |
+| --- | ---: | ---: | ---: |
+| 완료 요청 | 2,945 | 3,001 | 3,001 |
+| 실제 처리량 | 48.724 RPS | 50.013 RPS | 50.004 RPS |
+| 목표 달성률 | 약 97.45% | 약 100.03% | 약 100.01% |
+| 미시작 요청 | 56 | 0 | 0 |
+| 평균 | 421.93ms | 6.87ms | 13.390ms |
+| p50 | 252.85ms | 6.78ms | 12.757ms |
+| p95 | 1,096.34ms | 9.27ms | 16.803ms |
+| p99 | 1,234.66ms | 12.41ms | 24.767ms |
+| HTTP 오류·검사 실패 | 0 | 0 | 0 |
+| 공식 판정 | 실패 | 성공 | 성공 |
+
+pg_trgm과 FTS는 RARE 50 RPS를 모두 달성했다. pg_trgm p50은 LIKE보다
+약 37.27배, FTS p50은 LIKE보다 약 19.82배 개선됐다. FTS는 pg_trgm보다
+p50이 약 1.88배 높았지만 목표 부하에서 충분한 여유를 보였다.
+
+#### 부하 결과 통합 판정
+
+| 방식 | COMMON 50 RPS | RARE 50 RPS | 두 사례 동시 충족 |
+| --- | --- | --- | --- |
+| LIKE | 성공 | 실패 | 아니오 |
+| pg_trgm | 실패 | 성공 | 아니오 |
+| FTS 시간순 | 성공 | 성공 | 예 |
+
+성능만 보면 시간순 FTS가 유일하게 COMMON·RARE 두 사례를 모두
+충족했다. 그러나 FTS는 LIKE·pg_trgm과 다른 검색 의미이므로 이 표만으로
+기존 부분 문자열 검색의 최종 승자로 선언하지 않는다.
+
+### 4.6. 저장 공간·쓰기·운영 비용 비교
+
+| 항목 | LIKE | pg_trgm | Full Text Search |
+| --- | --- | --- | --- |
+| 추가 구조 | 없음 | `pg_trgm` extension, GIN 2개 | stored `tsvector` 2개, GIN 2개 |
+| 검색 전용 인덱스 | 없음 | 22,650,880 bytes, 약 21.60MiB | 6,971,392 bytes, 약 6.65MiB |
+| 주요 추가 저장 비용 | 없음 | trigram GIN | stored vector와 FTS GIN |
+| posts relation 비교 | 기준 | 물리 배치 차이로 전체 차이 미사용 | LIKE 대비 +144,433,152 bytes, +83.07% |
+| 삽입·본문 수정 | 추가 검색 구조 비용 없음 | trigram 생성·GIN 갱신 | vector 생성·GIN 갱신 |
+| soft delete | 추가 검색 구조 비용 없음 | 부분 GIN에서 이탈 | 부분 GIN에서 이탈 |
+| migration 복잡도 | 가장 낮음 | extension·인덱스 관리 | generated column·인덱스 관리 |
+| 쓰기·WAL·VACUUM 실측 | 미수행 | 미수행 | 미수행 |
+
+LIKE는 추가 저장·쓰기 비용이 가장 낮다. pg_trgm은 벡터 컬럼을 저장하지
+않지만 두 GIN이 약 21.60MiB로 FTS GIN 합계보다 약 3.25배 크다. FTS GIN
+자체는 약 6.65MiB지만 stored vector로 인한 heap·TOAST 등을 포함하면 posts
+전체 relation은 LIKE DB보다 약 137.74MiB 커졌다.
+
+이 실험은 읽기 비교의 상태를 보전하기 위해 쓰기 부하를 포함하지 않았다.
+따라서 추가 구조가 INSERT·UPDATE·WAL·VACUUM에 비용을 유발한다는 정성적
+판단은 가능하지만, 세 방식의 실제 쓰기 처리량을 수치로 비교할 수는 없다.
+
+### 4.7. 방식별 장점·단점·적용 판정
+
+#### LIKE
+
+```text
+장점
+├── 기존 부분 문자열 검색 계약의 기준
+├── 구조·migration·운영 복잡도가 가장 낮음
+├── 추가 저장·쓰기 비용이 없음
+└── 고빈도 최신순 검색에서 B-tree·LIMIT 조기 종료가 매우 빠름
+
+단점
+├── 희소·결과 없음·오래된 영역 검색에서 대량 행 검사 가능
+├── RARE 50 RPS에서 p95 1,096.34ms와 미시작 요청 56건
+├── 선택도에 따른 지연 편차가 큼
+└── 단어·관련도 검색 기능이 없음
+
+판정
+└── 기준선·단순 검색·fallback으로는 유효하지만 현재 10만 건의
+    모든 검색어를 안정적으로 처리하는 단독 운영 방식으로는 부족
+```
+
+#### pg_trgm
+
+```text
+장점
+├── LIKE의 부분 문자열 결과·정렬·cursor 계약 유지
+├── 희소 검색에서 GIN으로 후보를 크게 축소
+├── RARE 50 RPS p50 약 37.27배 개선, 미시작 56 → 0
+└── 별도 외부 시스템 없이 PostgreSQL 내에서 구성
+
+단점
+├── GIN이 post_id DESC 순서를 제공하지 않음
+├── 고빈도에서 전체 후보의 heap 접근·조인·정렬 필요
+├── COMMON 50 RPS p50이 LIKE보다 약 166.25배 악화
+├── GIN 저장 공간과 쓰기 유지 비용
+└── 두 글자 등 짧은 검색어의 인덱스 효과를 보장하지 않음
+
+판정
+└── 희소 부분 문자열 검색에는 실제 운영 가능한 기술이지만,
+    현재 쿼리 형태로 모든 검색어에 전역 적용하는 단일 방식으로는 부적합
+```
+
+#### Full Text Search
+
+```text
+장점
+├── 시간순 단어 검색에서 COMMON·RARE 50 RPS 모두 달성
+├── 단어·복합 질의·관련도 검색으로 확장 가능
+├── stored vector로 매 조회의 원문 정규화 비용 회피
+└── 별도 외부 시스템 없이 PostgreSQL 내에서 구성
+
+단점
+├── 부분 문자열·prefix가 기존 LIKE와 동일하게 동작하지 않음
+├── 여러 단어가 기본 AND로 해석됨
+├── `simple` 구성은 한국어 형태소 분석을 제공하지 않음
+├── stored vector와 GIN으로 posts relation 약 83.07% 증가
+├── 관련도순은 COMMON 비용, 복합 cursor, 결과 품질 검증이 남음
+└── vector·GIN의 쓰기 비용 미측정
+
+판정
+└── 단어 기반 시간순 검색을 요구사항으로 받아들일 수 있다면
+    이번 성능 목표를 유일하게 모두 달성한 가장 유력한 PostgreSQL 후보.
+    다만 현재 `simple` 기반 구현 전체를 검색 품질 검증 없이 즉시 확정하지 않음
+```
+
+### 4.8. 실제 운영 적합성에 대한 판단
+
+LIKE, `pg_trgm`, PostgreSQL FTS는 모두 실제 운영에서 사용할 수 있는 방식이다.
+이번 결과는 특정 PostgreSQL 기능 자체가 운영용으로 부적합함을 의미하지
+않는다. 적합성은 해당 기술과 현재 쿼리·정렬·데이터 분포·요구사항의 결합으로
+판단해야 한다.
+
+| 방식 | 운영에 적합한 조건 | 이번 구조 판정 |
+| --- | --- | --- |
+| LIKE | 데이터가 작거나 최신순 LIMIT이 잘 작동하고 최악 지연 허용 | RARE 목표 미달로 단독 방식 부적합 |
+| pg_trgm | 부분 문자열이 필수이고 추출 후보가 주로 희소하거나 정렬 재설계 가능 | COMMON에서 실패하여 전역 적용 부적합 |
+| FTS | 단어 기반 검색이 요구사항이고 언어·정렬·저장 비용 허용 | 시간순 성능 후보로 적합, 검색 품질·쓰기 추가 검증 필요 |
+
+따라서 인덱스를 적용했다는 사실만으로 운영 적합성을 판정할 수 없고,
+한 분포에서 실패했다고 기술 전체가 운영에 사용할 수 없다고 판단해서도
+안 된다.
+
+### 4.9. 최종 결론
+
+이번 비교에서는 세 방식을 모든 요구사항의 단일 순위로 나열할 수 없었다.
+
+```text
+기존 부분 문자열 계약을 유지하는 경우
+├── LIKE: COMMON 성공, RARE 실패
+└── pg_trgm: COMMON 실패, RARE 성공
+
+단어 기반 계약으로 변경하는 경우
+└── FTS 시간순: COMMON·RARE 모두 성공
+```
+
+#### 부분 문자열 검색을 유지할 경우
+
+LIKE와 pg_trgm 중 하나를 현재 쿼리 형태 그대로 전역 적용하여 COMMON·RARE
+모두의 50 RPS 목표를 충족하지 못했다. pg_trgm은 기존 결과를 유지하면서
+희소 검색을 크게 개선했지만 고빈도에서 GIN 후보 전체 처리로 실패했다.
+
+따라서 이 요구사항에서는 다음과 같이 판정한다.
+
+> 부분 문자열 의미를 유지하는 단일 PostgreSQL 쿼리 전략으로는 이번
+> COMMON·RARE 50 RPS 목표를 모두 달성하지 못했다. 현재 형태의 pg_trgm을
+> 전역 적용하지 않고, LIKE는 기준선·fallback으로 유지한다. 선택도에 따른
+> 쿼리 분기, 정렬 구조 변경 또는 검색 계약 재설계 없이 두 방식 중 하나를
+> 최종 단독 방식으로 승격하지 않는다.
+
+#### 단어 기반 검색으로 변경할 경우
+
+FTS 시간순 검색은 세 후보 중 유일하게 COMMON·RARE 50 RPS를 모두
+달성했다. 따라서 제품 요구사항을 단어 기반으로 변경할 수 있다면 가장
+유력한 PostgreSQL 후보다.
+
+그러나 이번 실험의 marker는 완전한 독립 단어였고 `simple`은 한국어 형태소
+분석을 제공하지 않는다. 관련도 순서의 결과 품질·복합 cursor·HTTP 부하와
+쓰기 비용도 완성되지 않았다. 따라서 성능 성공만으로 현재 실험 DDL을
+바로 Flyway V2로 승격하지 않는다.
+
+> 단어 기반 검색을 프로젝트의 새 계약으로 선택한다면 FTS 시간순 검색을
+> PostgreSQL 최종 후보로 선정한다. 다만 실제 한국어 질의·문서 fixture로 검색
+> 품질을 검증하고, 쓰기·WAL·VACUUM 비용과 저장 허용 범위를 확인한 뒤
+> 운영 migration으로 승격한다.
+
+#### 종합 판정
+
+| 방식 | 성능 판정 | 기능 판정 | 운영 판정 | 최종 위치 |
+| --- | --- | --- | --- | --- |
+| LIKE | COMMON 성공, RARE 실패 | 부분 문자열 기준 | 가장 단순 | 기준선·fallback |
+| pg_trgm | COMMON 실패, RARE 성공 | 부분 문자열 유지 | GIN 유지 비용 | 희소 검색 조건부 후보, 전역 적용 보류 |
+| FTS 시간순 | COMMON·RARE 성공 | 단어 기반으로 계약 변경 | vector·GIN·품질 검증 필요 | 단어 검색 선택 시 최종 PostgreSQL 후보 |
+
+최종적으로 PostgreSQL로 이전했다는 사실이나 인덱스·GIN 사용 여부는
+선택 근거가 아니었다. 동일한 데이터와 부하에서도 선택도·ORDER BY·LIMIT과
+검색 의미에 따라 결과가 반전됐다.
+
+> 이 비교의 핵심 결론은 `어떤 인덱스가 가장 빠른가`가 아니라,
+> `어떤 검색 의미를 제공할 것인가`를 먼저 결정한 뒤 그 계약 안에서 성능과
+> 운영 비용을 비교해야 한다는 것이다.
