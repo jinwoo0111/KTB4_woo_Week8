@@ -8,6 +8,9 @@ spring:
     username: ${LOCAL_POSTGRES_USER:community_local}
     password: ${LOCAL_POSTGRES_PASSWORD}
 
+  elasticsearch:
+    uris: http://127.0.0.1:${LOCAL_ELASTICSEARCH_PORT:9200}
+
   jpa:
     show-sql: true
 

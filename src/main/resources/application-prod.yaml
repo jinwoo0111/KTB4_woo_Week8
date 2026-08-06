@@ -8,6 +8,11 @@ spring:
     username: ${POSTGRES_USER:community_user}
     password: ${POSTGRES_PASSWORD:community_password}
 
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://elasticsearch:9200}
+    username: ${ELASTICSEARCH_USERNAME:elastic}
+    password: ${ELASTICSEARCH_PASSWORD:}
+
   jpa:
     show-sql: false
 

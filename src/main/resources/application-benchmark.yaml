@@ -12,6 +12,9 @@ spring:
       minimum-idle: ${BENCHMARK_HIKARI_MINIMUM_IDLE:10}
       connection-timeout: ${BENCHMARK_HIKARI_CONNECTION_TIMEOUT_MS:30000}
 
+  elasticsearch:
+    uris: http://127.0.0.1:${BENCHMARK_ELASTICSEARCH_PORT:9201}
+
   jpa:
     show-sql: false
     properties:

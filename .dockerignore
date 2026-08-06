@@ -6,9 +6,12 @@ build
 
 .env
 .env.*
+!.env.example
 
 data
+benchmark-data
+node_modules
+out
 uploads
 *.mv.db
 *.trace.db
-

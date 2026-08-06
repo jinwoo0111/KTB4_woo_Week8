@@ -16,6 +16,119 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - data-network
+
+  postgres-local:
+    profiles: ["local"]
+    image: postgres:18.4-alpine
+    container_name: community-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LOCAL_POSTGRES_DB:-community}
+      POSTGRES_USER: ${LOCAL_POSTGRES_USER:-community_local}
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:-community_local_password}
+    ports:
+      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-local-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-benchmark:
+    profiles: ["benchmark"]
+    image: postgres:18.4-alpine
+    container_name: community-postgres-benchmark
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${BENCHMARK_POSTGRES_DB:-community_benchmark}
+      POSTGRES_USER: ${BENCHMARK_POSTGRES_USER:-community_benchmark}
+      POSTGRES_PASSWORD: ${BENCHMARK_POSTGRES_PASSWORD:-community_benchmark_password}
+    ports:
+      - "127.0.0.1:${BENCHMARK_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-benchmark-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch-local:
+    profiles: ["local"]
+    build:
+      context: .
+      dockerfile: docker/elasticsearch/Dockerfile
+      args:
+        ELASTICSEARCH_VERSION: ${ELASTICSEARCH_VERSION:-9.2.8}
+    image: community-elasticsearch-nori:${ELASTICSEARCH_VERSION:-9.2.8}
+    container_name: community-elasticsearch-local
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms${LOCAL_ELASTICSEARCH_HEAP:-512m} -Xmx${LOCAL_ELASTICSEARCH_HEAP:-512m}
+    ports:
+      - "127.0.0.1:${LOCAL_ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-local-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  elasticsearch-benchmark:
+    profiles: ["benchmark"]
+    build:
+      context: .
+      dockerfile: docker/elasticsearch/Dockerfile
+      args:
+        ELASTICSEARCH_VERSION: ${ELASTICSEARCH_VERSION:-9.2.8}
+    image: community-elasticsearch-nori:${ELASTICSEARCH_VERSION:-9.2.8}
+    container_name: community-elasticsearch-benchmark
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms${BENCHMARK_ELASTICSEARCH_HEAP:-1g} -Xmx${BENCHMARK_ELASTICSEARCH_HEAP:-1g}
+    ports:
+      - "127.0.0.1:${BENCHMARK_ELASTICSEARCH_PORT:-9201}:9200"
+    volumes:
+      - elasticsearch-benchmark-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  elasticsearch:
+    build:
+      context: .
+      dockerfile: docker/elasticsearch/Dockerfile
+      args:
+        ELASTICSEARCH_VERSION: ${ELASTICSEARCH_VERSION:-9.2.8}
+    image: community-elasticsearch-nori:${ELASTICSEARCH_VERSION:-9.2.8}
+    container_name: community-elasticsearch
+    restart: always
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      ELASTIC_PASSWORD: ${ELASTICSEARCH_PASSWORD:-change_me_before_production}
+      ES_JAVA_OPTS: -Xms${ELASTICSEARCH_HEAP:-1g} -Xmx${ELASTICSEARCH_HEAP:-1g}
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --user elastic:$${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - data-network
 
   backend:
     build:
@@ -35,10 +148,19 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-community_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-community_password}
       JWT_SECRET: ${JWT_SECRET:-your_default_jwt_secret_key_here}
+      ELASTICSEARCH_URIS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-change_me_before_production}
+      APP_SEARCH_BACKEND: ${APP_SEARCH_BACKEND:-postgres}
+      APP_SEARCH_INDEXING_ENABLED: ${APP_SEARCH_INDEXING_ENABLED:-false}
+      APP_SEARCH_FALLBACK_ENABLED: ${APP_SEARCH_FALLBACK_ENABLED:-true}
     ports:
       - "8080:8080"
     volumes:
       - community-uploads:/app/uploads
+    networks:
+      - app-network
+      - data-network
 
   frontend:
     build:
@@ -51,7 +173,21 @@ services:
       - backend
     ports:
       - "80:80"
+    networks:
+      - app-network
 
 volumes:
   postgres-data:
+  postgres-local-data:
+    name: community-postgres-local-data
+  postgres-benchmark-data:
+    name: community-postgres-benchmark-data
+  elasticsearch-data:
+  elasticsearch-local-data:
+  elasticsearch-benchmark-data:
   community-uploads:
+
+networks:
+  app-network:
+  data-network:
+    internal: true

@@ -22,15 +22,22 @@ sourceSets {
 		compileClasspath += sourceSets.main.output + sourceSets.test.output
 		runtimeClasspath += output + compileClasspath
 	}
+	elasticsearchIntegrationTest {
+		compileClasspath += sourceSets.main.output + sourceSets.test.output
+		runtimeClasspath += output + compileClasspath
+	}
 }
 
 configurations {
 	postgresIntegrationTestImplementation.extendsFrom testImplementation
 	postgresIntegrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+	elasticsearchIntegrationTestImplementation.extendsFrom testImplementation
+	elasticsearchIntegrationTestRuntimeOnly.extendsFrom testRuntimeOnly
 }
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -51,6 +58,9 @@ dependencies {
 	testImplementation 'org.springframework.security:spring-security-test'
 	postgresIntegrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	postgresIntegrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
+	elasticsearchIntegrationTestImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	elasticsearchIntegrationTestImplementation 'org.testcontainers:testcontainers-elasticsearch'
+	elasticsearchIntegrationTestImplementation 'org.testcontainers:testcontainers-postgresql'
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -66,6 +76,15 @@ tasks.register('postgresIntegrationTest', Test) {
 	group = 'verification'
 	testClassesDirs = sourceSets.postgresIntegrationTest.output.classesDirs
 	classpath = sourceSets.postgresIntegrationTest.runtimeClasspath
+	useJUnitPlatform()
+	shouldRunAfter tasks.named('test')
+}
+
+tasks.register('elasticsearchIntegrationTest', Test) {
+	description = 'Runs integration tests against PostgreSQL and Elasticsearch with Nori.'
+	group = 'verification'
+	testClassesDirs = sourceSets.elasticsearchIntegrationTest.output.classesDirs
+	classpath = sourceSets.elasticsearchIntegrationTest.runtimeClasspath
 	useJUnitPlatform()
 	shouldRunAfter tasks.named('test')
 }
