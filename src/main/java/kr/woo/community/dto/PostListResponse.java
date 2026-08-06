@@ -1,6 +1,7 @@
 package kr.woo.community.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 
@@ -15,16 +16,30 @@ public class PostListResponse {
     @JsonProperty("next_cursor")
     private Long nextCursor;
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private PostSearchMetadataResponse search;
+
     public PostListResponse(
             List<PostSummaryResponse> posts,
             int count,
             boolean hasNext,
             Long nextCursor
     ) {
+        this(posts, count, hasNext, nextCursor, null);
+    }
+
+    public PostListResponse(
+            List<PostSummaryResponse> posts,
+            int count,
+            boolean hasNext,
+            Long nextCursor,
+            PostSearchMetadataResponse search
+    ) {
         this.posts = posts;
         this.count = count;
         this.hasNext = hasNext;
         this.nextCursor = nextCursor;
+        this.search = search;
     }
 
     public List<PostSummaryResponse> getPosts() {
@@ -41,5 +56,9 @@ public class PostListResponse {
 
     public Long getNextCursor() {
         return nextCursor;
+    }
+
+    public PostSearchMetadataResponse getSearch() {
+        return search;
     }
 }
