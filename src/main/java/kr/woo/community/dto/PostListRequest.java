@@ -10,6 +10,7 @@ import lombok.Setter;
 public class PostListRequest {
     private String keyword;
     private String scope;
-    private Long cursor;
+    private String sort;
+    private String cursor;
     private int size = 10;
 }

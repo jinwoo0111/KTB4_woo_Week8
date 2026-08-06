@@ -5,9 +5,11 @@ import kr.woo.community.security.config.SecurityConfig;
 import kr.woo.community.security.jwt.JWTUtil;
 import kr.woo.community.dto.PostListRequest;
 import kr.woo.community.dto.PostListResponse;
+import kr.woo.community.dto.PostSearchMetadataResponse;
 import kr.woo.community.dto.PostViewResponse;
 import kr.woo.community.exception.InvalidSearchKeywordException;
 import kr.woo.community.exception.InvalidSearchScopeException;
+import kr.woo.community.exception.InvalidSearchSortException;
 import kr.woo.community.service.PostService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -66,7 +68,8 @@ class PostControllerTest {
 
         mockMvc.perform(get("/posts"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("posts_success"));
+                .andExpect(jsonPath("$.message").value("posts_success"))
+                .andExpect(jsonPath("$.data.search").doesNotExist());
 
         ArgumentCaptor<PostListRequest> requestCaptor =
                 ArgumentCaptor.forClass(PostListRequest.class);
@@ -75,8 +78,32 @@ class PostControllerTest {
         PostListRequest request = requestCaptor.getValue();
         assertNull(request.getKeyword());
         assertNull(request.getScope());
+        assertNull(request.getSort());
         assertNull(request.getCursor());
         assertEquals(10, request.getSize());
+    }
+
+    @Test
+    @DisplayName("검색 응답은 실제 백엔드와 정렬 상태를 search 메타데이터로 반환한다")
+    @WithAnonymousUser
+    void getPostsReturnsSearchMetadata() throws Exception {
+        PostSearchMetadataResponse search = new PostSearchMetadataResponse(
+                "relevance",
+                "time",
+                "postgres",
+                false
+        );
+        when(postService.getPosts(any(PostListRequest.class)))
+                .thenReturn(new PostListResponse(List.of(), 0, false, null, search));
+
+        mockMvc.perform(get("/posts")
+                        .param("keyword", "스프링")
+                        .param("sort", "relevance"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.search.requested_sort").value("relevance"))
+                .andExpect(jsonPath("$.data.search.effective_sort").value("time"))
+                .andExpect(jsonPath("$.data.search.backend").value("postgres"))
+                .andExpect(jsonPath("$.data.search.degraded").value(false));
     }
 
     @Test
@@ -89,6 +116,7 @@ class PostControllerTest {
         mockMvc.perform(get("/posts")
                         .param("keyword", "Spring")
                         .param("scope", "title")
+                        .param("sort", "relevance")
                         .param("cursor", "100")
                         .param("size", "5"))
                 .andExpect(status().isOk())
@@ -101,20 +129,37 @@ class PostControllerTest {
         PostListRequest request = requestCaptor.getValue();
         assertEquals("Spring", request.getKeyword());
         assertEquals("title", request.getScope());
-        assertEquals(100L, request.getCursor());
+        assertEquals("relevance", request.getSort());
+        assertEquals("100", request.getCursor());
         assertEquals(5, request.getSize());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"cursor", "size"})
-    @DisplayName("숫자 목록 파라미터에 문자열을 전달하면 잘못된 요청을 반환한다")
-    void getPostsRejectsInvalidNumericParameterType(String parameterName) throws Exception {
+    @Test
+    @DisplayName("페이지 크기에 문자열을 전달하면 잘못된 요청을 반환한다")
+    void getPostsRejectsInvalidSizeType() throws Exception {
         mockMvc.perform(get("/posts")
-                        .param(parameterName, "abc"))
+                        .param("size", "abc"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("invalid_request"));
 
         verify(postService, never()).getPosts(any(PostListRequest.class));
+    }
+
+    @Test
+    @DisplayName("문자열 검색 커서를 요청 DTO로 바인딩한다")
+    void getPostsBindsOpaqueCursorToRequest() throws Exception {
+        when(postService.getPosts(any(PostListRequest.class)))
+                .thenReturn(new PostListResponse(List.of(), 0, false, null));
+
+        mockMvc.perform(get("/posts")
+                        .param("keyword", "스프링")
+                        .param("cursor", "opaque-token"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<PostListRequest> requestCaptor =
+                ArgumentCaptor.forClass(PostListRequest.class);
+        verify(postService).getPosts(requestCaptor.capture());
+        assertEquals("opaque-token", requestCaptor.getValue().getCursor());
     }
 
     @ParameterizedTest
@@ -142,6 +187,10 @@ class PostControllerTest {
                 Arguments.of(
                         new InvalidSearchScopeException(),
                         "invalid_search_scope"
+                ),
+                Arguments.of(
+                        new InvalidSearchSortException(),
+                        "invalid_search_sort"
                 )
         );
     }

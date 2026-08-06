@@ -10,6 +10,7 @@ import kr.woo.community.exception.InvalidPaginationParameterException;
 import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.InvalidSearchKeywordException;
 import kr.woo.community.exception.InvalidSearchScopeException;
+import kr.woo.community.exception.InvalidSearchSortException;
 import kr.woo.community.exception.PostNotFoundException;
 import kr.woo.community.exception.PostLikeNotFoundException;
 import kr.woo.community.repository.CommentRepository;
@@ -95,6 +96,7 @@ class PostServiceTest {
         assertEquals(0, response.getCount());
         assertFalse(response.isHasNext());
         assertNull(response.getNextCursor());
+        assertNull(response.getSearch());
     }
 
     @Test
@@ -104,7 +106,7 @@ class PostServiceTest {
         PostListRequest request = new PostListRequest();
         request.setKeyword("  SPRING   _100%  ");
         request.setScope("title");
-        request.setCursor(100L);
+        request.setCursor("100");
         request.setSize(5);
 
         when(postRepository.searchPostsByTitle(
@@ -234,6 +236,94 @@ class PostServiceTest {
     }
 
     @Test
+    @DisplayName("검색어 없는 일반 목록은 time 정렬을 허용한다")
+    void getPostsWithoutKeywordAcceptsTimeSort() {
+        PostListRequest request = new PostListRequest();
+        request.setSort("time");
+
+        when(postRepository.findPostsByCursor(isNull(), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        postService.getPosts(request);
+
+        verify(postRepository).findPostsByCursor(isNull(), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("검색어 없는 일반 목록은 relevance 정렬을 거부한다")
+    void getPostsWithoutKeywordRejectsRelevanceSort() {
+        PostListRequest request = new PostListRequest();
+        request.setSort("relevance");
+
+        assertThrows(
+                InvalidSearchSortException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"recent", "TIME", "RELEVANCE"})
+    @DisplayName("허용되지 않은 정렬 값은 검색 정렬 오류가 발생한다")
+    void getPostsRejectsInvalidSort(String sort) {
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+        request.setSort(sort);
+
+        assertThrows(
+                InvalidSearchSortException.class,
+                () -> postService.getPosts(request)
+        );
+        verifyNoInteractions(postRepository);
+    }
+
+    @Test
+    @DisplayName("검색 요청은 relevance 정렬 값을 허용한다")
+    void getPostsWithKeywordAcceptsRelevanceSort() {
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+        request.setSort("relevance");
+
+        when(postRepository.searchPostsByTitleOrContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        PostListResponse response = postService.getPosts(request);
+
+        verify(postRepository).searchPostsByTitleOrContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        );
+        assertEquals("relevance", response.getSearch().getRequestedSort());
+        assertEquals("time", response.getSearch().getEffectiveSort());
+        assertEquals("postgres", response.getSearch().getBackend());
+        assertFalse(response.getSearch().isDegraded());
+    }
+
+    @Test
+    @DisplayName("검색 정렬을 생략하면 PostgreSQL time 검색 메타데이터를 반환한다")
+    void getPostsWithKeywordReturnsDefaultSearchMetadata() {
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("스프링");
+
+        when(postRepository.searchPostsByTitleOrContent(
+                eq("스프링"),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        PostListResponse response = postService.getPosts(request);
+
+        assertEquals("time", response.getSearch().getRequestedSort());
+        assertEquals("time", response.getSearch().getEffectiveSort());
+        assertEquals("postgres", response.getSearch().getBackend());
+        assertFalse(response.getSearch().isDegraded());
+    }
+
+    @Test
     @DisplayName("허용되지 않은 검색 범위는 검색 범위 오류가 발생한다")
     void getPostsFailsWhenScopeIsInvalid() {
         // given
@@ -310,7 +400,7 @@ class PostServiceTest {
     @ParameterizedTest
     @MethodSource("invalidPaginationRequests")
     @DisplayName("페이지 크기 또는 커서가 허용 범위를 벗어나면 조회하지 않는다")
-    void getPostsFailsWhenPaginationIsInvalid(Long cursor, int size) {
+    void getPostsFailsWhenPaginationIsInvalid(String cursor, int size) {
         // given
         PostListRequest request = new PostListRequest();
         request.setCursor(cursor);
@@ -328,8 +418,9 @@ class PostServiceTest {
         return Stream.of(
                 Arguments.of(null, 0),
                 Arguments.of(null, 11),
-                Arguments.of(0L, 10),
-                Arguments.of(-1L, 10)
+                Arguments.of("0", 10),
+                Arguments.of("-1", 10),
+                Arguments.of("opaque-token", 10)
         );
     }
 

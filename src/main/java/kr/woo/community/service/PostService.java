@@ -8,6 +8,7 @@ import kr.woo.community.entity.Comment;
 import kr.woo.community.exception.InvalidPaginationParameterException;
 import kr.woo.community.exception.InvalidSearchKeywordException;
 import kr.woo.community.exception.InvalidSearchScopeException;
+import kr.woo.community.exception.InvalidSearchSortException;
 import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
@@ -58,6 +59,11 @@ public class PostService {
         CONTENT
     }
 
+    private enum SearchSort {
+        TIME,
+        RELEVANCE
+    }
+
     public Post findById(Long id) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new PostNotFoundException());
@@ -99,24 +105,55 @@ public class PostService {
         };
     }
 
+    private SearchSort resolveSearchSort(String sort) {
+        if (sort == null) {
+            return SearchSort.TIME;
+        }
+
+        return switch (sort) {
+            case "time" -> SearchSort.TIME;
+            case "relevance" -> SearchSort.RELEVANCE;
+            default -> throw new InvalidSearchSortException();
+        };
+    }
+
+    private Long resolveLegacyCursor(String cursor) {
+        if (cursor == null) {
+            return null;
+        }
+
+        try {
+            Long resolvedCursor = Long.valueOf(cursor.strip());
+            if (resolvedCursor <= 0) {
+                throw new InvalidPaginationParameterException();
+            }
+            return resolvedCursor;
+        } catch (NumberFormatException e) {
+            throw new InvalidPaginationParameterException();
+        }
+    }
+
     public PostListResponse getPosts(PostListRequest request) {
-        Long cursor = request.getCursor();
         int size = request.getSize();
 
-        // cursor 나 size 오류 예외
-        if(size <= 0 || size > MAX_PAGE_SIZE || (cursor != null && cursor <= 0)){
+        if(size <= 0 || size > MAX_PAGE_SIZE){
             throw new InvalidPaginationParameterException();
         }
 
+        Long cursor = resolveLegacyCursor(request.getCursor());
         PageRequest pageable = PageRequest.of(0, size + 1);
         String keyword = request.getKeyword();
         String scope = request.getScope();
+        SearchSort searchSort = resolveSearchSort(request.getSort());
 
         List<Post> posts;
 
         if (keyword == null) {
             if (scope != null) {
                 throw new InvalidSearchKeywordException();
+            }
+            if (searchSort == SearchSort.RELEVANCE) {
+                throw new InvalidSearchSortException();
             }
 
             posts = postRepository.findPostsByCursor(cursor, pageable);
@@ -142,7 +179,16 @@ public class PostService {
             }
         }
 
-        return createPostListResponse(posts, size);
+        PostSearchMetadataResponse searchMetadata = keyword == null
+                ? null
+                : new PostSearchMetadataResponse(
+                        searchSort.name().toLowerCase(Locale.ROOT),
+                        "time",
+                        "postgres",
+                        false
+                );
+
+        return createPostListResponse(posts, size, searchMetadata);
     }
 
     private List<Post> searchPostsWithLike(
@@ -171,7 +217,11 @@ public class PostService {
         };
     }
 
-    private PostListResponse createPostListResponse(List<Post> posts, int size) {
+    private PostListResponse createPostListResponse(
+            List<Post> posts,
+            int size,
+            PostSearchMetadataResponse searchMetadata
+    ) {
         // 응답 가능한 게시글 수가 요청 size 보다 크면 다음 페이지가 존재
         boolean hasNext = posts.size() > size;
 
@@ -209,7 +259,8 @@ public class PostService {
                 postResponses,
                 pagePosts.size(),
                 hasNext,
-                nextCursor
+                nextCursor,
+                searchMetadata
         );
     }
 

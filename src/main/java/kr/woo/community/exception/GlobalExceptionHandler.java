@@ -42,7 +42,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
             InvalidSearchKeywordException.class,
-            InvalidSearchScopeException.class
+            InvalidSearchScopeException.class,
+            InvalidSearchSortException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleInvalidSearchParameter(
             RuntimeException e
