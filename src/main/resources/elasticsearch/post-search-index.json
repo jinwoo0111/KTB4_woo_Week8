@@ -1,0 +1,65 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "1s",
+    "analysis": {
+      "tokenizer": {
+        "community_nori_tokenizer": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed",
+          "discard_punctuation": true
+        }
+      },
+      "analyzer": {
+        "community_nori_index": {
+          "type": "custom",
+          "tokenizer": "community_nori_tokenizer",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "community_nori_search": {
+          "type": "custom",
+          "tokenizer": "community_nori_tokenizer",
+          "filter": [
+            "lowercase"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "_source": {
+      "enabled": true
+    },
+    "properties": {
+      "post_id": {
+        "type": "long"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "community_nori_index",
+        "search_analyzer": "community_nori_search"
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "community_nori_index",
+        "search_analyzer": "community_nori_search"
+      },
+      "created_at": {
+        "type": "date",
+        "format": "strict_date_optional_time_nanos",
+        "index": false,
+        "doc_values": false
+      },
+      "updated_at": {
+        "type": "date",
+        "format": "strict_date_optional_time_nanos",
+        "index": false,
+        "doc_values": false
+      }
+    }
+  }
+}
