@@ -5,6 +5,9 @@ import kr.woo.community.exception.ConflictException;
 import kr.woo.community.exception.GlobalExceptionHandler;
 import kr.woo.community.exception.InvalidRequestException;
 import kr.woo.community.exception.PostLikeNotFoundException;
+import kr.woo.community.search.query.ExpiredPostSearchCursorException;
+import kr.woo.community.search.query.InvalidPostSearchCursorException;
+import kr.woo.community.search.query.PostSearchExecutionException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -101,5 +104,44 @@ class GlobalExceptionHandlerTest {
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals("not_found", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("위변조되거나 조건이 다른 검색 커서는 400 응답을 반환한다")
+    void handleInvalidPostSearchCursor() {
+        ResponseEntity<ApiResponse<Void>> response =
+                exceptionHandler.handleInvalidPostSearchCursor(
+                        new InvalidPostSearchCursorException("invalid")
+                );
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("invalid_pagination_parameter", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("만료된 검색 커서는 503 응답을 반환한다")
+    void handleExpiredPostSearchCursor() {
+        ResponseEntity<ApiResponse<Void>> response =
+                exceptionHandler.handleExpiredPostSearchCursor(
+                        new ExpiredPostSearchCursorException()
+                );
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("search_temporarily_unavailable", response.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("Elasticsearch 검색 실행 실패는 503 응답을 반환한다")
+    void handlePostSearchExecution() {
+        ResponseEntity<ApiResponse<Void>> response =
+                exceptionHandler.handlePostSearchExecution(
+                        new PostSearchExecutionException("unavailable")
+                );
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("search_temporarily_unavailable", response.getBody().getMessage());
     }
 }

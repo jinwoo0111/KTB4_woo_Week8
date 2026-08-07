@@ -82,6 +82,15 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 """)
     List<Post> findAllByIdsWithAuthor(@Param("postIds") List<Long> postIds);
 
+    @Query("""
+       SELECT p
+       FROM Post p
+       JOIN FETCH p.author
+       WHERE p.id IN :postIds
+       AND p.deletedAt IS NULL
+""")
+    List<Post> findAllActiveByIdsWithAuthor(@Param("postIds") List<Long> postIds);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
        UPDATE Post p

@@ -207,4 +207,28 @@ class PostRepositoryTest {
         assertEquals(secondPost.getId(), result.get(1).getId());
         assertTrue(result.stream().noneMatch(post -> post.getId().equals(oldestPost.getId())));
     }
+
+    @Test
+    @DisplayName("검색 후보 hydration은 삭제되지 않은 게시글과 작성자만 조회한다")
+    void findAllActiveByIdsWithAuthorExcludesDeletedPosts() {
+        User user = userRepository.save(
+                new User("hydrate@test.com", "password", "복원작성자", null)
+        );
+        Post activePost = postRepository.save(
+                new Post("활성 게시글", "활성 내용", null, user)
+        );
+        Post deletedPost = postRepository.save(
+                new Post("삭제 게시글", "삭제 내용", null, user)
+        );
+        deletedPost.softDelete();
+        postRepository.flush();
+
+        List<Post> result = postRepository.findAllActiveByIdsWithAuthor(
+                List.of(activePost.getId(), deletedPost.getId())
+        );
+
+        assertEquals(1, result.size());
+        assertEquals(activePost.getId(), result.getFirst().getId());
+        assertEquals(user.getNickname(), result.getFirst().getAuthor().getNickname());
+    }
 }

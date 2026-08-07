@@ -14,7 +14,7 @@ public class PostListResponse {
     private boolean hasNext;
 
     @JsonProperty("next_cursor")
-    private Long nextCursor;
+    private Object nextCursor;
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private PostSearchMetadataResponse search;
@@ -23,7 +23,7 @@ public class PostListResponse {
             List<PostSummaryResponse> posts,
             int count,
             boolean hasNext,
-            Long nextCursor
+            Object nextCursor
     ) {
         this(posts, count, hasNext, nextCursor, null);
     }
@@ -32,7 +32,7 @@ public class PostListResponse {
             List<PostSummaryResponse> posts,
             int count,
             boolean hasNext,
-            Long nextCursor,
+            Object nextCursor,
             PostSearchMetadataResponse search
     ) {
         this.posts = posts;
@@ -54,7 +54,7 @@ public class PostListResponse {
         return hasNext;
     }
 
-    public Long getNextCursor() {
+    public Object getNextCursor() {
         return nextCursor;
     }
 

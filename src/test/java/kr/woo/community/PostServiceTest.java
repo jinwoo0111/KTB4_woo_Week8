@@ -19,6 +19,14 @@ import kr.woo.community.repository.PostRepository;
 import kr.woo.community.repository.UserRepository;
 import kr.woo.community.service.PostService;
 import kr.woo.community.service.FileStorageService;
+import kr.woo.community.search.query.PostSearchCandidate;
+import kr.woo.community.search.query.PostSearchCriteria;
+import kr.woo.community.search.query.PostSearchGateway;
+import kr.woo.community.search.query.PostSearchPage;
+import kr.woo.community.search.query.PostSearchScope;
+import kr.woo.community.search.query.PostSearchSort;
+import kr.woo.community.search.query.PostSearchSortValues;
+import kr.woo.community.search.outbox.PostSearchOutboxWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 import java.time.LocalDateTime;
@@ -69,6 +78,12 @@ class PostServiceTest {
 
     @Mock
     private FileStorageService fileStorageService;
+
+    @Mock
+    private PostSearchGateway postSearchGateway;
+
+    @Mock
+    private PostSearchOutboxWriter postSearchOutboxWriter;
 
     @InjectMocks
     private PostService postService;
@@ -324,6 +339,76 @@ class PostServiceTest {
     }
 
     @Test
+    @DisplayName("Elasticsearch 검색은 후보를 active 게시글로 복원하고 후보 순서를 유지한다")
+    void getPostsWithElasticsearchHydratesActivePostsInCandidateOrder() {
+        ReflectionTestUtils.setField(postService, "searchBackend", "elasticsearch");
+        PostListRequest request = new PostListRequest();
+        request.setKeyword("  대한민국 개발자  ");
+        request.setScope("title");
+        request.setSort("relevance");
+        request.setCursor("opaque-cursor");
+        request.setSize(3);
+
+        PostSearchCandidate candidate30 = candidate(30L, 2.0, 1L);
+        PostSearchCandidate candidate20 = candidate(20L, 1.5, 2L);
+        PostSearchCandidate missingOrDeletedCandidate = candidate(10L, 1.0, 3L);
+        when(postSearchGateway.searchPage(any(PostSearchCriteria.class), eq("opaque-cursor")))
+                .thenReturn(new PostSearchPage(
+                        List.of(candidate30, candidate20, missingOrDeletedCandidate),
+                        true,
+                        "next-opaque-cursor"
+                ));
+
+        User author = mock(User.class);
+        Post post30 = summaryPost(30L, author);
+        Post post20 = summaryPost(20L, author);
+        when(postRepository.findAllActiveByIdsWithAuthor(List.of(30L, 20L, 10L)))
+                .thenReturn(List.of(post20, post30));
+
+        PostListResponse response = postService.getPosts(request);
+
+        ArgumentCaptor<PostSearchCriteria> criteriaCaptor =
+                ArgumentCaptor.forClass(PostSearchCriteria.class);
+        verify(postSearchGateway).searchPage(
+                criteriaCaptor.capture(),
+                eq("opaque-cursor")
+        );
+        PostSearchCriteria criteria = criteriaCaptor.getValue();
+        assertEquals("대한민국 개발자", criteria.keyword());
+        assertEquals(PostSearchScope.TITLE, criteria.scope());
+        assertEquals(PostSearchSort.RELEVANCE, criteria.sort());
+        assertEquals(3, criteria.limit());
+
+        assertEquals(List.of(30L, 20L), response.getPosts().stream()
+                .map(post -> post.getPostId())
+                .toList());
+        assertEquals(2, response.getCount());
+        assertTrue(response.isHasNext());
+        assertEquals("next-opaque-cursor", response.getNextCursor());
+        assertEquals("relevance", response.getSearch().getRequestedSort());
+        assertEquals("relevance", response.getSearch().getEffectiveSort());
+        assertEquals("elasticsearch", response.getSearch().getBackend());
+        assertFalse(response.getSearch().isDegraded());
+    }
+
+    @Test
+    @DisplayName("Elasticsearch 백엔드에서도 검색어 없는 목록은 PostgreSQL 숫자 커서를 사용한다")
+    void getPostsWithoutKeywordKeepsPostgresPathForElasticsearchBackend() {
+        ReflectionTestUtils.setField(postService, "searchBackend", "elasticsearch");
+        PostListRequest request = new PostListRequest();
+        request.setCursor("100");
+
+        when(postRepository.findPostsByCursor(eq(100L), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        PostListResponse response = postService.getPosts(request);
+
+        verify(postRepository).findPostsByCursor(eq(100L), any(Pageable.class));
+        verifyNoInteractions(postSearchGateway);
+        assertNull(response.getSearch());
+    }
+
+    @Test
     @DisplayName("허용되지 않은 검색 범위는 검색 범위 오류가 발생한다")
     void getPostsFailsWhenScopeIsInvalid() {
         // given
@@ -422,6 +507,26 @@ class PostServiceTest {
                 Arguments.of("-1", 10),
                 Arguments.of("opaque-token", 10)
         );
+    }
+
+    private static PostSearchCandidate candidate(
+            long postId,
+            double score,
+            long pitShardDoc
+    ) {
+        return new PostSearchCandidate(
+                postId,
+                score,
+                new PostSearchSortValues(score, postId, pitShardDoc)
+        );
+    }
+
+    private static Post summaryPost(long postId, User author) {
+        Post post = mock(Post.class);
+        when(post.getId()).thenReturn(postId);
+        when(post.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(post.getAuthor()).thenReturn(author);
+        return post;
     }
 
     @Test

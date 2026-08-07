@@ -19,6 +19,11 @@ import kr.woo.community.repository.PostRepository;
 import kr.woo.community.repository.PostFtsSearchRepository;
 import kr.woo.community.repository.CommentRepository;
 import kr.woo.community.repository.UserRepository;
+import kr.woo.community.search.query.PostSearchCandidate;
+import kr.woo.community.search.query.PostSearchCriteria;
+import kr.woo.community.search.query.PostSearchGateway;
+import kr.woo.community.search.query.PostSearchPage;
+import kr.woo.community.search.outbox.PostSearchOutboxWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,8 +34,10 @@ import org.springframework.beans.factory.annotation.Value;
 import java.time.format.DateTimeFormatter;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -42,9 +49,14 @@ public class PostService {
     private final CommentRepository commentRepository;
     private final PostLikeRepository postLikeRepository;
     private final FileStorageService fileStorageService;
+    private final PostSearchGateway postSearchGateway;
+    private final PostSearchOutboxWriter postSearchOutboxWriter;
 
     @Value("${app.search.mode:like}")
     private String searchMode = "like";
+
+    @Value("${app.search.backend:postgres}")
+    private String searchBackend = "postgres";
 
     private static final DateTimeFormatter FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -140,13 +152,9 @@ public class PostService {
             throw new InvalidPaginationParameterException();
         }
 
-        Long cursor = resolveLegacyCursor(request.getCursor());
-        PageRequest pageable = PageRequest.of(0, size + 1);
         String keyword = request.getKeyword();
         String scope = request.getScope();
         SearchSort searchSort = resolveSearchSort(request.getSort());
-
-        List<Post> posts;
 
         if (keyword == null) {
             if (scope != null) {
@@ -156,39 +164,102 @@ public class PostService {
                 throw new InvalidSearchSortException();
             }
 
-            posts = postRepository.findPostsByCursor(cursor, pageable);
-        } else {
-            String normalizedKeyword = normalizeKeyword(keyword);
-            SearchScope searchScope = resolveSearchScope(scope);
-
-            if ("fts".equalsIgnoreCase(searchMode)) {
-                posts = searchPostsWithFts(
-                        normalizedKeyword,
-                        searchScope,
-                        cursor,
-                        size + 1
-                );
-            } else {
-                String escapedKeyword = escapeLikeKeyword(normalizedKeyword);
-                posts = searchPostsWithLike(
-                        escapedKeyword,
-                        searchScope,
-                        cursor,
-                        pageable
-                );
-            }
+            Long cursor = resolveLegacyCursor(request.getCursor());
+            List<Post> posts = postRepository.findPostsByCursor(
+                    cursor,
+                    PageRequest.of(0, size + 1)
+            );
+            return createPostListResponse(posts, size, null);
         }
 
-        PostSearchMetadataResponse searchMetadata = keyword == null
-                ? null
-                : new PostSearchMetadataResponse(
-                        searchSort.name().toLowerCase(Locale.ROOT),
-                        "time",
-                        "postgres",
-                        false
-                );
+        String normalizedKeyword = normalizeKeyword(keyword);
+        SearchScope searchScope = resolveSearchScope(scope);
+
+        if ("elasticsearch".equalsIgnoreCase(searchBackend)) {
+            return searchPostsWithElasticsearch(
+                    normalizedKeyword,
+                    searchScope,
+                    searchSort,
+                    request.getCursor(),
+                    size
+            );
+        }
+
+        Long cursor = resolveLegacyCursor(request.getCursor());
+        List<Post> posts;
+        if ("fts".equalsIgnoreCase(searchMode)) {
+            posts = searchPostsWithFts(normalizedKeyword, searchScope, cursor, size + 1);
+        } else {
+            posts = searchPostsWithLike(
+                    escapeLikeKeyword(normalizedKeyword),
+                    searchScope,
+                    cursor,
+                    PageRequest.of(0, size + 1)
+            );
+        }
+
+        PostSearchMetadataResponse searchMetadata = new PostSearchMetadataResponse(
+                searchSort.name().toLowerCase(Locale.ROOT),
+                "time",
+                "postgres",
+                false
+        );
 
         return createPostListResponse(posts, size, searchMetadata);
+    }
+
+    private PostListResponse searchPostsWithElasticsearch(
+            String keyword,
+            SearchScope searchScope,
+            SearchSort searchSort,
+            String cursor,
+            int size
+    ) {
+        PostSearchCriteria criteria = new PostSearchCriteria(
+                keyword,
+                kr.woo.community.search.query.PostSearchScope.valueOf(searchScope.name()),
+                kr.woo.community.search.query.PostSearchSort.valueOf(searchSort.name()),
+                size
+        );
+        PostSearchPage page = postSearchGateway.searchPage(criteria, cursor);
+        List<Post> posts = hydrateActivePosts(page.candidates());
+        String effectiveSort = searchSort.name().toLowerCase(Locale.ROOT);
+
+        return new PostListResponse(
+                toPostSummaryResponses(posts),
+                posts.size(),
+                page.hasNext(),
+                page.nextCursor(),
+                new PostSearchMetadataResponse(
+                        effectiveSort,
+                        effectiveSort,
+                        "elasticsearch",
+                        false
+                )
+        );
+    }
+
+    private List<Post> hydrateActivePosts(List<PostSearchCandidate> candidates) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> postIds = candidates.stream()
+                .map(PostSearchCandidate::postId)
+                .toList();
+        Map<Long, Post> activePostsById = new LinkedHashMap<>();
+        for (Post post : postRepository.findAllActiveByIdsWithAuthor(postIds)) {
+            activePostsById.put(post.getId(), post);
+        }
+
+        List<Post> orderedPosts = new ArrayList<>();
+        for (PostSearchCandidate candidate : candidates) {
+            Post post = activePostsById.get(candidate.postId());
+            if (post != null) {
+                orderedPosts.add(post);
+            }
+        }
+        return List.copyOf(orderedPosts);
     }
 
     private List<Post> searchPostsWithLike(
@@ -234,9 +305,24 @@ public class PostService {
             pagePosts.add(posts.get(i));
         }
 
-        List<PostSummaryResponse> postResponses = new ArrayList<>();
+        List<PostSummaryResponse> postResponses = toPostSummaryResponses(pagePosts);
+        Long nextCursor = null;
+        if(hasNext && !pagePosts.isEmpty()) {
+            nextCursor = pagePosts.get(pagePosts.size() -1).getId();
+        }
 
-        for (Post post : pagePosts) {
+        return new PostListResponse(
+                postResponses,
+                pagePosts.size(),
+                hasNext,
+                nextCursor,
+                searchMetadata
+        );
+    }
+
+    private List<PostSummaryResponse> toPostSummaryResponses(List<Post> posts) {
+        List<PostSummaryResponse> postResponses = new ArrayList<>();
+        for (Post post : posts) {
             postResponses.add(new PostSummaryResponse(
                     post.getId(),
                     post.getTitle(),
@@ -250,18 +336,7 @@ public class PostService {
                     post.getAuthor().getProfileImage()
             ));
         }
-        Long nextCursor = null;
-        if(hasNext && !pagePosts.isEmpty()) {
-            nextCursor = pagePosts.get(pagePosts.size() -1).getId();
-        }
-
-        return new PostListResponse(
-                postResponses,
-                pagePosts.size(),
-                hasNext,
-                nextCursor,
-                searchMetadata
-        );
+        return List.copyOf(postResponses);
     }
 
     // 게시글 상세 조회
@@ -339,6 +414,8 @@ public class PostService {
         );
 
         postRepository.save(post);
+        postRepository.flush();
+        postSearchOutboxWriter.recordUpsert(post);
         return new PostCreateResponse(
                 post.getId(),
                 post.getTitle(),
@@ -359,21 +436,34 @@ public class PostService {
             throw new AccessDeniedException("게시글 작성자만 수정할 수 있습니다.");
         }
 
+        boolean searchProjectionChanged = false;
+
         if(request.getTitle() != null) {
             if(request.getTitle().isBlank()) {
                 throw new InvalidRequestException("title_blank");
             }
-            post.changeTitle(request.getTitle());
+            if (!request.getTitle().equals(post.getTitle())) {
+                post.changeTitle(request.getTitle());
+                searchProjectionChanged = true;
+            }
         }
 
         if(request.getContent() != null) {
             if(request.getContent().isBlank()) {
                 throw new InvalidRequestException("content_blank");
             }
-            post.changeContent(request.getContent());
+            if (!request.getContent().equals(post.getContent())) {
+                post.changeContent(request.getContent());
+                searchProjectionChanged = true;
+            }
         }
 
         updateContentImage(post, request);
+
+        if (searchProjectionChanged) {
+            postRepository.flush();
+            postSearchOutboxWriter.recordUpsert(post);
+        }
 
         return new PostUpdateResponse(
                 post.getId(),
@@ -421,6 +511,8 @@ public class PostService {
             comment.softDelete();
         }
         post.softDelete();
+        postRepository.flush();
+        postSearchOutboxWriter.recordDelete(post.getId());
     }
 
     // 좋아요 증가

@@ -16,6 +16,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import lombok.extern.slf4j.Slf4j;
+import kr.woo.community.search.query.ExpiredPostSearchCursorException;
+import kr.woo.community.search.query.InvalidPostSearchCursorException;
+import kr.woo.community.search.query.PostSearchExecutionException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,6 +41,31 @@ public class GlobalExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ApiResponse<>(e.getMessage(), null));
+    }
+
+    @ExceptionHandler(ExpiredPostSearchCursorException.class)
+    public ResponseEntity<ApiResponse<Void>> handleExpiredPostSearchCursor(
+            ExpiredPostSearchCursorException e
+    ) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiResponse<>("search_temporarily_unavailable", null));
+    }
+
+    @ExceptionHandler(InvalidPostSearchCursorException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidPostSearchCursor(
+            InvalidPostSearchCursorException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiResponse<>("invalid_pagination_parameter", null));
+    }
+
+    @ExceptionHandler(PostSearchExecutionException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePostSearchExecution(
+            PostSearchExecutionException e
+    ) {
+        log.warn("Elasticsearch post search is temporarily unavailable", e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiResponse<>("search_temporarily_unavailable", null));
     }
 
     @ExceptionHandler({
