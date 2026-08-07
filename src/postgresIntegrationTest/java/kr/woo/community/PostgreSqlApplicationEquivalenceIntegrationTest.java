@@ -8,6 +8,12 @@ import kr.woo.community.repository.CommentRepository;
 import kr.woo.community.repository.PostLikeRepository;
 import kr.woo.community.repository.PostRepository;
 import kr.woo.community.repository.UserRepository;
+import kr.woo.community.dto.PostCreateRequest;
+import kr.woo.community.search.outbox.PostSearchOutboxEvent;
+import kr.woo.community.search.outbox.PostSearchOutboxEventType;
+import kr.woo.community.search.outbox.PostSearchOutboxRepository;
+import kr.woo.community.search.outbox.PostSearchOutboxStatus;
+import kr.woo.community.service.PostService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -53,6 +60,15 @@ class PostgreSqlApplicationEquivalenceIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @Autowired
+    private PostService postService;
+
+    @Autowired
+    private PostSearchOutboxRepository postSearchOutboxRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Test
     void appliesFlywayV1AndPersistsEntityRelationshipsWithPostgreSqlSequences() {
         Boolean migrationSucceeded = jdbcTemplate.queryForObject(
@@ -85,6 +101,51 @@ class PostgreSqlApplicationEquivalenceIntegrationTest {
         assertThat(post.getLikeCount()).isZero();
         assertThat(post.getCommentCount()).isZero();
         assertThat(post.getViewCount()).isZero();
+    }
+
+    @Test
+    void appliesFlywayV2AndAtomicallyPersistsAPostSearchOutboxEvent() throws Exception {
+        Boolean migrationSucceeded = jdbcTemplate.queryForObject(
+                "SELECT success FROM flyway_schema_history WHERE version = '2'",
+                Boolean.class
+        );
+        Integer sequenceCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_sequences "
+                        + "WHERE schemaname = current_schema() "
+                        + "AND increment_by = 1 "
+                        + "AND sequencename = 'post_search_outbox_events_seq'",
+                Integer.class
+        );
+        Integer indexCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_indexes "
+                        + "WHERE schemaname = current_schema() "
+                        + "AND indexname IN ('idx_post_search_outbox_pending', "
+                        + "'idx_post_search_outbox_aggregate_order')",
+                Integer.class
+        );
+        User author = saveUser("outbox-postgres@test.com", "PG아웃박스작성자");
+        PostCreateRequest request = objectMapper.readValue(
+                "{\"title\":\"대한민국 개발자 커뮤니티\","
+                        + "\"content\":\"PostgreSQL outbox 본문\"}",
+                PostCreateRequest.class
+        );
+
+        var response = postService.createPost(author.getId(), request);
+
+        List<PostSearchOutboxEvent> events =
+                postSearchOutboxRepository.findAllByOrderByIdAsc();
+        assertThat(migrationSucceeded).isTrue();
+        assertThat(sequenceCount).isOne();
+        assertThat(indexCount).isEqualTo(2);
+        assertThat(events).hasSize(1);
+        assertThat(events.getFirst().getAggregateId()).isEqualTo(response.getPostId());
+        assertThat(events.getFirst().getEventType())
+                .isEqualTo(PostSearchOutboxEventType.UPSERT);
+        assertThat(events.getFirst().getStatus()).isEqualTo(PostSearchOutboxStatus.PENDING);
+        assertThat(events.getFirst().getPayload())
+                .contains("\"post_id\":" + response.getPostId())
+                .contains("\"title\":\"대한민국 개발자 커뮤니티\"")
+                .contains("\"created_at\":");
     }
 
     @Test

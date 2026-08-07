@@ -41,6 +41,16 @@ app:
     backend: ${APP_SEARCH_BACKEND:postgres}
     indexing-enabled: ${APP_SEARCH_INDEXING_ENABLED:false}
     fallback-enabled: ${APP_SEARCH_FALLBACK_ENABLED:true}
+    cursor-secret: ${APP_SEARCH_CURSOR_SECRET:${JWT_SECRET}}
+    cursor-ttl: ${APP_SEARCH_CURSOR_TTL:PT1M}
+    pit-keep-alive: ${APP_SEARCH_PIT_KEEP_ALIVE:2m}
+    outbox:
+      batch-size: ${APP_SEARCH_OUTBOX_BATCH_SIZE:50}
+      poll-delay: ${APP_SEARCH_OUTBOX_POLL_DELAY:1s}
+      max-attempts: ${APP_SEARCH_OUTBOX_MAX_ATTEMPTS:5}
+      base-backoff: ${APP_SEARCH_OUTBOX_BASE_BACKOFF:PT1S}
+      max-backoff: ${APP_SEARCH_OUTBOX_MAX_BACKOFF:PT1M}
+      claim-timeout: ${APP_SEARCH_OUTBOX_CLAIM_TIMEOUT:PT2M}
   storage:
     upload-root: ${UPLOAD_PATH:./uploads}
   cors:
